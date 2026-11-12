@@ -5,3 +5,4 @@ __pycache__/
 .pytest_cache/
 evidence/*
 !evidence/.gitkeep
+datos/*.jsonl

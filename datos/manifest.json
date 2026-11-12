@@ -1,0 +1,26 @@
+{
+  "dataset_id": "principal-v1",
+  "semilla": 4601,
+  "archivos": {
+    "clientes": {
+      "cantidad": 60,
+      "sha256": "0154d048291a1db8e6ad43056dc0576331fd0565cdbe05fbafa08d2b628bcb7e"
+    },
+    "proyectos": {
+      "cantidad": 120,
+      "sha256": "5b0183f8052805841c63672cbfaafbe155f88dae31cc6fb78f6bad67b118ca41"
+    },
+    "batches": {
+      "cantidad": 600,
+      "sha256": "7c033ac7b22edc8bc44cf9b6e74e4dd5c40ce942f99e923daf1369c88010cae1"
+    },
+    "anotadores": {
+      "cantidad": 300,
+      "sha256": "a1183eb35069168e3d98c9744020be91e95eed14b7386972e2b3057eeded67eb"
+    },
+    "tareas": {
+      "cantidad": 60000,
+      "sha256": "70d862e5f0f64d72d59e19f3ab8012580931f7b6e161abc6365fd54458958eb2"
+    }
+  }
+}
