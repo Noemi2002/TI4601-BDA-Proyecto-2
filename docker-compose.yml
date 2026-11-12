@@ -95,8 +95,27 @@ services:
       - .:/app
     networks:
       - plataforma-net
+  
+  registro:
+    build:
+      context: ./servicios/registro
+    container_name: proyecto2-registro
 
-      
+    environment:
+      MONGO_URI: mongodb://mongo-1:27017,mongo-2:27017,mongo-3:27017/?replicaSet=rs-plataforma
+
+    depends_on:
+      mongo-1:
+        condition: service_healthy
+      mongo-2:
+        condition: service_healthy
+      mongo-3:
+        condition: service_healthy
+
+    networks:
+      - plataforma-net
+
+
 volumes:
   mongo1_data:
   mongo2_data:
