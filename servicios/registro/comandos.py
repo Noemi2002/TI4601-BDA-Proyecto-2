@@ -10,6 +10,8 @@ from pydantic import AwareDatetime, BaseModel, Field, model_validator
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError, PyMongoError
 from pymongo.write_concern import WriteConcern
+from datetime import datetime, timedelta, timezone
+
 
 from database import cliente, db
 
@@ -82,8 +84,35 @@ class LiberarTarea(BaseModel):
     token: UUID
 
 
+class RenovarAsignacion(BaseModel):
+    accion: Literal["renovar_asignacion"]
+    tarea_id: UUID
+    anotador_id: UUID
+    token: UUID
+
+
+class ConsultarVencidas(BaseModel):
+    accion: Literal["consultar_vencidas"]
+    proyecto_id: UUID
+    limite: int = Field(default=25, ge=1, le=100)
+
+
+class RecuperarVencida(BaseModel):
+    accion: Literal["recuperar_vencida"]
+    tarea_id: UUID
+    token: UUID
+    version: int = Field(ge=1)
+
+
 Comando = Annotated[
-    CrearProyecto | CrearLote | LiberarTarea,
+    (
+        CrearProyecto
+        | CrearLote
+        | LiberarTarea
+        | RenovarAsignacion
+        | ConsultarVencidas
+        | RecuperarVencida
+    ),
     Body(discriminator="accion")
 ]
 
@@ -314,6 +343,114 @@ def liberar_tarea(c: LiberarTarea):
     }
 
 
+def renovar_asignacion(c: RenovarAsignacion):
+    ahora = datetime.now(timezone.utc)
+    vencimiento = ahora + timedelta(seconds=120)
+
+    tarea = db.tareas.find_one_and_update(
+        {
+            "_id": str(c.tarea_id),
+            "estado": "abierta",
+            "asignacion.anotador_id": str(c.anotador_id),
+            "asignacion.token": str(c.token),
+            "asignacion.vence_en": {"$gt": ahora}
+        },
+        {
+            "$set": {
+                "asignacion.vence_en": vencimiento,
+                "actualizado_en": ahora
+            }
+        },
+        return_document=ReturnDocument.AFTER
+    )
+
+    if tarea is None:
+        raise HTTPException(
+            409,
+            "Asignacion vencida o credenciales incorrectas"
+        )
+
+    return {
+        "tarea_id": tarea["_id"],
+        "estado": tarea["estado"],
+        "version": tarea["version"],
+        "vence_en": vencimiento.isoformat()
+    }
+
+
+def consultar_vencidas(c: ConsultarVencidas):
+    ahora = datetime.now(timezone.utc)
+
+    cursor = (
+        db.tareas.find(
+            {
+                "proyecto_id": str(c.proyecto_id),
+                "estado": "abierta",
+                "asignacion.vence_en": {"$lte": ahora}
+            },
+            {
+                "_id": 1,
+                "asignacion.token": 1,
+                "version": 1
+            }
+        )
+        .sort("asignacion.vence_en", 1)
+        .limit(c.limite)
+    )
+
+    candidatas = [
+        {
+            "tarea_id": tarea["_id"],
+            "token": tarea["asignacion"]["token"],
+            "version": tarea["version"]
+        }
+        for tarea in cursor
+    ]
+
+    return {
+        "candidatas": candidatas,
+        "cantidad": len(candidatas)
+    }
+
+
+def recuperar_vencida(c: RecuperarVencida):
+    ahora = datetime.now(timezone.utc)
+    evento_id = str(uuid4())
+
+    tarea = db.tareas.find_one_and_update(
+        {
+            "_id": str(c.tarea_id),
+            "estado": "abierta",
+            "asignacion.token": str(c.token),
+            "asignacion.vence_en": {"$lte": ahora},
+            "version": c.version
+        },
+        {
+            "$set": {
+                "estado": "disponible",
+                "asignacion": None,
+                "actualizado_en": ahora,
+                "ultimo_evento_id": evento_id
+            },
+            "$inc": {"version": 1}
+        },
+        return_document=ReturnDocument.AFTER
+    )
+
+    if tarea is None:
+        raise HTTPException(
+            409,
+            "Tarea no vencida o asignacion modificada"
+        )
+
+    return {
+        "tarea_id": tarea["_id"],
+        "estado": tarea["estado"],
+        "version": tarea["version"],
+        "evento_id": evento_id
+    }
+
+
 # Sexta ruta interna
 
 @router.post("/comandos")
@@ -325,7 +462,21 @@ def ejecutar_comando(comando: Comando):
         if isinstance(comando, CrearLote):
             return crear_lote(comando)
 
-        return liberar_tarea(comando)
+        if isinstance(comando, LiberarTarea):
+            return liberar_tarea(comando)
+
+        if isinstance(comando, RenovarAsignacion):
+            return renovar_asignacion(comando)
+
+        if isinstance(comando, ConsultarVencidas):
+            return consultar_vencidas(comando)
+
+        if isinstance(comando, RecuperarVencida):
+            return recuperar_vencida(comando)
+
+        raise HTTPException(
+            422, "Comando desconocido"
+        )
 
     except PyMongoError as error:
         raise HTTPException(

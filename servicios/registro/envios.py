@@ -94,7 +94,10 @@ def enviar_tarea(
                 ),
                 "asignacion.token": str(
                     solicitud.token
-                )
+                ),
+                "asignacion.vence_en": {
+                    "$gt": ahora
+                }   
             },
             {
                 "$set": {
