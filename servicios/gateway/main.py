@@ -41,6 +41,11 @@ class SolicitudBorrador(BaseModel):
     token: uuid.UUID
     datos: dict[str, Any]
 
+class SolicitudLiberar(BaseModel):
+    proyecto_id: uuid.UUID
+    anotador_id: uuid.UUID
+    token: uuid.UUID
+
 
 @app.put("/tareas/{tarea_id}/borrador")
 async def guardar_borrador(
@@ -154,6 +159,100 @@ async def guardar_borrador(
             "lock": respuesta_sesion.json(),
         }
 
+
+@app.post("/tareas/{tarea_id}/liberar")
+async def liberar_tarea_publica(
+    tarea_id: uuid.UUID,
+    body: SolicitudLiberar,
+):
+    tarea_id_str = str(tarea_id)
+    proyecto_id = str(body.proyecto_id)
+    anotador_id = str(body.anotador_id)
+    token = str(body.token)
+
+    async with httpx.AsyncClient() as cliente:
+
+        # 1. MongoDB es la fuente de verdad:
+        #    primero liberamos la asignación definitiva.
+        try:
+            respuesta_registro = await cliente.post(
+                f"{REGISTRO_URL}/comandos",
+                json={
+                    "accion": "liberar_tarea",
+                    "tarea_id": tarea_id_str,
+                    "anotador_id": anotador_id,
+                    "token": token,
+                },
+                timeout=TIMEOUT,
+            )
+
+        except httpx.HTTPError:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de registro no disponible",
+            )
+
+        if respuesta_registro.status_code != 200:
+            try:
+                detalle = respuesta_registro.json()
+            except ValueError:
+                detalle = {
+                    "detail": respuesta_registro.text
+                }
+
+            return JSONResponse(
+                status_code=respuesta_registro.status_code,
+                content=detalle,
+            )
+
+        # 2. Limpiar lock, sesión y borrador temporal.
+        try:
+            respuesta_sesion = await cliente.request(
+                "DELETE",
+                f"{SESION_URL}/locks/liberar",
+                json={
+                    "tarea_id": tarea_id_str,
+                    "proyecto_id": proyecto_id,
+                    "anotador_id": anotador_id,
+                    "token": token,
+                    "eliminar_borrador": True,
+                },
+                timeout=TIMEOUT,
+            )
+
+        except httpx.HTTPError:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "detail": (
+                        "La tarea fue liberada en Registro, "
+                        "pero no se pudo limpiar la sesión"
+                    ),
+                    "registro_liberado": True,
+                },
+            )
+
+        if respuesta_sesion.status_code != 200:
+            try:
+                detalle_sesion = respuesta_sesion.json()
+            except ValueError:
+                detalle_sesion = {
+                    "detail": respuesta_sesion.text
+                }
+
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "detail": detalle_sesion,
+                    "registro_liberado": True,
+                },
+            )
+
+        return {
+            "tarea_id": tarea_id_str,
+            "estado": "disponible",
+            "liberada": True,
+        }
 # =========================================================
 # AUXILIARES
 # =========================================================
