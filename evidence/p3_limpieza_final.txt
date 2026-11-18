@@ -1,0 +1,13 @@
+=== LIMPIEZA FINAL P3 ===
+2026-11-18T16:43:23-06:00
+TAREA_ID=0e6dba1d-31ca-5cd4-95ac-6e3b964abfac
+ANOTADOR_ID=ca879ebc-a8b2-5af7-adc4-afb712a5ffa0
+
+Lock:
+
+
+Sesion:
+
+
+Borrador:
+

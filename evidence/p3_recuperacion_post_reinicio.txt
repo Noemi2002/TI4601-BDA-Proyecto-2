@@ -1,0 +1,60 @@
+ Container proyecto2-mongo-2 Running 
+ Container proyecto2-gateway Running 
+ Container proyecto2-registro Running 
+ Container proyecto2-mongo-1 Running 
+ Container proyecto2-valkey Running 
+ Container proyecto2-sesion Running 
+ Container proyecto2-mongo-3 Running 
+ Container proyecto2-valkey Waiting 
+ Container proyecto2-mongo-3 Waiting 
+ Container proyecto2-mongo-1 Waiting 
+ Container proyecto2-mongo-2 Waiting 
+ Container proyecto2-mongo-3 Healthy 
+ Container proyecto2-mongo-1 Healthy 
+ Container proyecto2-mongo-2 Healthy 
+ Container proyecto2-valkey Healthy 
+ Container proyecto2-gateway Waiting 
+ Container proyecto2-gateway Healthy 
+ Container ti4601-proyecto2-simulador-run-d782c4a5a96a Creating 
+ Container ti4601-proyecto2-simulador-run-d782c4a5a96a Created 
+
+[recuperar] HTTP 200
+{
+  "anotador_id": "ca879ebc-a8b2-5af7-adc4-afb712a5ffa0",
+  "sesion": {
+    "tarea_id": "0e6dba1d-31ca-5cd4-95ac-6e3b964abfac",
+    "proyecto_id": "b3f242ed-755a-5b7a-9a41-ab68d3aa50fd",
+    "anotador_id": "ca879ebc-a8b2-5af7-adc4-afb712a5ffa0",
+    "token": "1af738a4-99b4-4d78-ac3b-f60e1d1e0461",
+    "etapa": "editando",
+    "ultimo_latido": "2026-11-18T22:38:27.619902+00:00"
+  },
+  "borrador": {
+    "tarea_id": "0e6dba1d-31ca-5cd4-95ac-6e3b964abfac",
+    "proyecto_id": "b3f242ed-755a-5b7a-9a41-ab68d3aa50fd",
+    "anotador_id": "ca879ebc-a8b2-5af7-adc4-afb712a5ffa0",
+    "token": "1af738a4-99b4-4d78-ac3b-f60e1d1e0461",
+    "datos": {
+      "geometria": "bbox",
+      "etiquetas": [
+        "imagen#vehiculo"
+      ],
+      "elementos": [
+        {
+          "x": 120,
+          "y": 90,
+          "ancho": 240,
+          "alto": 150
+        }
+      ]
+    },
+    "actualizado_en": "2026-11-18T22:38:27.619902+00:00"
+  },
+  "lock": {
+    "activo": true,
+    "token_coincide": true,
+    "ttl_ms": 92335
+  }
+}
+
+Latencia recuperación: 29.68 ms

@@ -1,0 +1,109 @@
+ Container proyecto2-gateway Running 
+ Container proyecto2-registro Running 
+ Container proyecto2-mongo-3 Running 
+ Container proyecto2-valkey Running 
+ Container proyecto2-sesion Running 
+ Container proyecto2-mongo-2 Running 
+ Container proyecto2-mongo-1 Running 
+ Container proyecto2-valkey Waiting 
+ Container proyecto2-mongo-2 Waiting 
+ Container proyecto2-mongo-3 Waiting 
+ Container proyecto2-mongo-1 Waiting 
+ Container proyecto2-valkey Healthy 
+ Container proyecto2-mongo-1 Healthy 
+ Container proyecto2-mongo-2 Healthy 
+ Container proyecto2-mongo-3 Healthy 
+ Container proyecto2-gateway Waiting 
+ Container proyecto2-gateway Healthy 
+ Container ti4601-proyecto2-simulador-run-df90ec8dcdf9 Creating 
+ Container ti4601-proyecto2-simulador-run-df90ec8dcdf9 Created 
+
+[siguiente] HTTP 200
+{
+  "tarea_id": "0e6dba1d-31ca-5cd4-95ac-6e3b964abfac",
+  "proyecto_id": "b3f242ed-755a-5b7a-9a41-ab68d3aa50fd",
+  "batch_id": "8b6450e5-ce63-52d8-88f5-803ca4f986d7",
+  "estado": "abierta",
+  "version": 3,
+  "modalidad": "imagen",
+  "geometria": "bbox",
+  "archivo": {
+    "uri": "s3://dataset-sintetico/imagen/archivo-000083",
+    "sha256": "7a86590f9d119b4b5229dccf8d5cb229c03496c28e8b75cf32c04800c1bd433d",
+    "bytes": 3303132,
+    "mime": "image/jpeg",
+    "meta": {
+      "valor_min": 0,
+      "valor_max": 100
+    }
+  },
+  "asignacion": {
+    "anotador_id": "ca879ebc-a8b2-5af7-adc4-afb712a5ffa0",
+    "token": "1af738a4-99b4-4d78-ac3b-f60e1d1e0461",
+    "vence_en": "2026-11-18T22:40:21.446000"
+  },
+  "evento_id": "f64beee4-e547-4a7e-8d20-1cf3bc5c740c",
+  "token": "1af738a4-99b4-4d78-ac3b-f60e1d1e0461",
+  "borrador": {
+    "tarea_id": "0e6dba1d-31ca-5cd4-95ac-6e3b964abfac",
+    "proyecto_id": "b3f242ed-755a-5b7a-9a41-ab68d3aa50fd",
+    "anotador_id": "ca879ebc-a8b2-5af7-adc4-afb712a5ffa0",
+    "token": "67bf3726-cc4a-413e-bd66-f70d112ae78b",
+    "datos": {
+      "geometria": "bbox",
+      "etiquetas": [
+        "imagen#vehiculo"
+      ],
+      "elementos": [
+        {
+          "x": 120,
+          "y": 90,
+          "ancho": 240,
+          "alto": 150
+        }
+      ]
+    },
+    "actualizado_en": "2026-11-18T22:35:21.794910+00:00"
+  }
+}
+
+Tarea: 0e6dba1d-31ca-5cd4-95ac-6e3b964abfac
+Token: 1af738a4-99b4-4d78-ac3b-f60e1d1e0461
+
+[borrador] HTTP 200
+{
+  "tarea_id": "0e6dba1d-31ca-5cd4-95ac-6e3b964abfac",
+  "estado": "borrador_guardado",
+  "lock": {
+    "guardado": true,
+    "tarea_id": "0e6dba1d-31ca-5cd4-95ac-6e3b964abfac",
+    "actualizado_en": "2026-11-18T22:38:23.508049+00:00",
+    "ttl_ms": 120000
+  }
+}
+
+[borrador] HTTP 200
+{
+  "tarea_id": "0e6dba1d-31ca-5cd4-95ac-6e3b964abfac",
+  "estado": "borrador_guardado",
+  "lock": {
+    "guardado": true,
+    "tarea_id": "0e6dba1d-31ca-5cd4-95ac-6e3b964abfac",
+    "actualizado_en": "2026-11-18T22:38:25.562237+00:00",
+    "ttl_ms": 120000
+  }
+}
+
+[borrador] HTTP 200
+{
+  "tarea_id": "0e6dba1d-31ca-5cd4-95ac-6e3b964abfac",
+  "estado": "borrador_guardado",
+  "lock": {
+    "guardado": true,
+    "tarea_id": "0e6dba1d-31ca-5cd4-95ac-6e3b964abfac",
+    "actualizado_en": "2026-11-18T22:38:27.619902+00:00",
+    "ttl_ms": 120000
+  }
+}
+
+INTERRUPCIÓN SIMULADA: no se envía ni se libera la tarea.

@@ -1,0 +1,9 @@
+=== P1 - AISLAMIENTO DEL SIMULADOR ===
+2026-11-18T16:47:43-06:00
+
+--- requirements ---
+httpx==0.28.1
+--- referencias de conexion ---
+198:        default="http://gateway:8000",
+
+--- configuracion simulador ---
