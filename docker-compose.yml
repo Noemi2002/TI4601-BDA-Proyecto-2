@@ -192,6 +192,24 @@ services:
       retries: 10
 
 
+  simulador:
+    build:
+      context: ./simulador
+    container_name: proyecto2-simulador
+
+    environment:
+      GATEWAY_URL: http://gateway:8000
+
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+    networks:
+      - plataforma-net
+
+    profiles:
+      - pruebas
+
 volumes:
   mongo1_data:
   mongo2_data:
