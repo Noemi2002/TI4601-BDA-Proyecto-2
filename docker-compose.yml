@@ -84,6 +84,26 @@ services:
     networks:
       - plataforma-net
 
+  valkey:
+    image: valkey/valkey:8
+    container_name: proyecto2-valkey
+    command:
+      - valkey-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    volumes:
+      - valkey_data:/data
+    networks:
+      - plataforma-net
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+
   carga:
     build:
       context: ./dataset
@@ -115,11 +135,36 @@ services:
     networks:
       - plataforma-net
 
+  sesion:
+    build:
+      context: ./servicios/sesion
+    container_name: proyecto2-sesion
+    environment:
+      VALKEY_URL: redis://valkey:6379/0
+      LOCK_TTL_MS: "120000"
+    depends_on:
+      valkey:
+        condition: service_healthy
+    networks:
+      - plataforma-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8002/salud', timeout=2).read()"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 
 volumes:
   mongo1_data:
   mongo2_data:
   mongo3_data:
+  valkey_data:
 
 networks:
   plataforma-net:
