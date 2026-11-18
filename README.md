@@ -48,21 +48,39 @@ TI4601-BDA-Proyecto-2/
 │   ├── manifest.json
 │   └── *.jsonl
 ├── servicios/
-│   └── registro/
+│   ├── registro/
+│   │   ├── Dockerfile
+│   │   ├── requirements.txt
+│   │   ├── database.py
+│   │   ├── main.py
+│   │   ├── envios.py
+│   │   ├── revisiones.py
+│   │   ├── exportacion.py
+│   │   └── comandos.py
+│   ├── sesion/
+│   │   ├── Dockerfile
+│   │   ├── requirements.txt
+│   │   └── main.py
+│   └── gateway/
 │       ├── Dockerfile
 │       ├── requirements.txt
-│       ├── database.py
-│       ├── main.py
-│       ├── envios.py
-│       ├── revisiones.py
-│       ├── exportacion.py
-│       └── comandos.py
+│       └── main.py
+├── simulador/
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── simulador.py
+│   ├── carga.py
+│   └── usuarios_p6.txt
 ├── pruebas/
 │   ├── p2_registro_interno.py
 │   ├── p3_comandos_internos.py
 │   ├── p4_indices.py
 │   ├── p5_recuperacion_interna.py
 │   ├── p6_contrato_registro.py
+│   ├── p6_corrida.sh
+│   ├── p6_docker_stats.sh
+│   ├── p6_resumen.py
+│   ├── p6_resumen_stats.py
 │   ├── p8_medir.py
 │   └── p8_escenarios.sh
 └── evidence/
@@ -73,9 +91,12 @@ TI4601-BDA-Proyecto-2/
 - `mongo/`: creación de colecciones, índices y ejemplos de documentos.
 - `dataset/`: generación y carga reproducible de datos.
 - `datos/`: archivos JSONL generados y manifiesto de integridad.
-- `servicios/registro/`: implementación del servicio REST FastAPI.
-- `pruebas/`: pruebas de concurrencia, recuperación, índices, contratos y fallas.
-- `evidence/`: resultados originales de las pruebas.
+- `servicios/registro/`: estado operacional y persistencia MongoDB.
+- `servicios/sesion/`: locks, sesiones y borradores sobre Valkey.
+- `servicios/gateway/`: único punto de entrada HTTP público.
+- `simulador/`: simulación funcional y generación de carga concurrente.
+- `pruebas/`: pruebas internas, aceptación, carga y tolerancia a fallas.
+- `evidence/`: resultados originales y resúmenes consolidados de las pruebas.
 
 ### 4. Instalación inicial en otra computadora
 
@@ -263,51 +284,74 @@ La carga utiliza:
 
 Esto permite ejecutar nuevamente la carga sin duplicar los documentos del conjunto principal ni sobrescribir sus estados existentes.
 
-#### 4.7. Construir y levantar FastAPI
+#### 4.7. Construir y levantar los servicios de aplicación
+
+Construir los servicios principales:
 
 ```bash
-docker compose up -d --build registro
+docker compose build registro sesion gateway
+```
+
+Levantar la infraestructura y los servicios internos:
+
+```bash
+docker compose up -d \
+  mongo-1 mongo-2 mongo-3 \
+  valkey registro sesion gateway
+```
+
+Verificar el estado:
+
+```bash
 docker compose ps
 ```
 
-El servicio `registro` utiliza el puerto interno `8001`.
+El único puerto que debe quedar publicado hacia el host es el del Gateway:
 
-No publica ese puerto en el host porque el gateway debe ser el único punto de entrada público de la plataforma.
+```text
+http://localhost:8000
+```
 
-Comprobar el servicio:
+Los servicios internos utilizan únicamente la red Docker `plataforma-net`:
+
+| Servicio | Puerto interno | Publicado al host |
+|---|---:|---|
+| `gateway` | 8000 | Sí, `8000:8000` |
+| `registro` | 8001 | No |
+| `sesion` | 8002 | No |
+| `valkey` | 6379 | No |
+| `mongo-1` | 27017 | No |
+| `mongo-2` | 27017 | No |
+| `mongo-3` | 27017 | No |
+
+Comprobar el Gateway:
 
 ```bash
-docker compose exec registro python -c \
-"import urllib.request; print(urllib.request.urlopen('http://localhost:8001/salud').read().decode())"
+curl -s http://localhost:8000/salud | python3 -m json.tool
 ```
 
-**Resultado esperado:**
-
-```json
-{
-  "servicio": "registro",
-  "estado": "operativo",
-  "mongodb": "disponible"
-}
-```
+En condiciones normales el estado general debe ser `operativo`.
 
 ### 5. Iniciar y detener el sistema
 
 #### Después de apagar o reiniciar la computadora
 
 ```bash
-docker compose up -d mongo-1 mongo-2 mongo-3 registro
+docker compose up -d \
+  mongo-1 mongo-2 mongo-3 \
+  valkey registro sesion gateway
+
 docker compose ps
 ```
 
-No es necesario volver a inicializar el replica set ni cargar los documentos.
+No es necesario volver a inicializar el replica set ni volver a cargar los documentos.
 
-La información permanece en los volúmenes de Docker.
+La información de MongoDB permanece en sus volúmenes y Valkey conserva la información persistida mediante AOF.
 
 #### Detener los servicios
 
 ```bash
-docker compose stop registro mongo-1 mongo-2 mongo-3
+docker compose stop gateway sesion registro valkey mongo-1 mongo-2 mongo-3
 ```
 
 También se puede utilizar:
@@ -316,47 +360,57 @@ También se puede utilizar:
 docker compose down
 ```
 
-Este último comando elimina los contenedores y la red, pero conserva los volúmenes.
+Este comando elimina los contenedores y la red, pero conserva los volúmenes.
 
-**No ejecutar `docker compose down -v` si se desea conservar la base de datos.**
+**No ejecutar `docker compose down -v` si se desea conservar la base de datos y el estado persistente de Valkey.**
 
-Tampoco eliminar manualmente los volúmenes:
-
-- `mongo1_data`
-- `mongo2_data`
-- `mongo3_data`
+Tampoco eliminar manualmente los volúmenes persistentes del proyecto.
 
 ### 6. Arquitectura implementada
 
 ```text
-             Gateway
-     (integración pendiente)
-       Puerto público 8000
-               |
-               v
-         Registro REST
-         FastAPI :8001
-               |
-               v
-        MongoDB 8.0.4
-          rs-plataforma
-               |
-      +--------+--------+
-      |        |        |
-   mongo-1  mongo-2  mongo-3
+                    Cliente / Simulador
+                           |
+                        HTTP :8000
+                           |
+                           v
+                    +---------------+
+                    |    Gateway    |
+                    | FastAPI :8000 |
+                    +---------------+
+                      /           \
+                     /             \
+                    v               v
+          +----------------+   +----------------+
+          |    Registro    |   |     Sesión     |
+          | FastAPI :8001  |   | FastAPI :8002  |
+          +----------------+   +----------------+
+                   |                    |
+                   v                    v
+          +----------------+      +-----------+
+          | MongoDB 8.0.4  |      | Valkey 8  |
+          | rs-plataforma  |      |   :6379   |
+          +----------------+      +-----------+
+             /      |      \
+            v       v       v
+        mongo-1  mongo-2  mongo-3
 ```
 
-La comunicación se realiza mediante la red interna de Docker denominada `plataforma-net`.
+La comunicación se realiza mediante la red interna Docker `plataforma-net`.
 
-La conexión de PyMongo utiliza los tres miembros:
+El **Gateway es el único punto de entrada público** de la plataforma. El simulador no se comunica directamente con MongoDB, Valkey, Registro ni Sesión.
+
+El servicio Registro mantiene el estado operacional definitivo de las tareas en MongoDB. No consulta Valkey y no escribe directamente archivos Parquet.
+
+El servicio Sesión administra candados temporales, sesiones, borradores y actividad de edición en Valkey. Valkey no sustituye a MongoDB como fuente de verdad del estado definitivo.
+
+La conexión de PyMongo utiliza los tres miembros del replica set:
 
 ```text
 mongodb://mongo-1:27017,mongo-2:27017,mongo-3:27017/?replicaSet=rs-plataforma
 ```
 
-El servicio de registro se encarga exclusivamente de los datos operacionales.
-
-No consulta directamente Valkey, no escribe archivos Parquet y no ejecuta consultas analíticas de Spark.
+Los subsistemas de Historial/Parquet y Analítica/Spark se integran de forma independiente. Las rutas analíticas públicas del Gateway se habilitan cuando el servicio analítico del equipo se encuentre disponible.
 
 ### 7. Servicio REST de registro
 
@@ -562,11 +616,11 @@ aprobada
 
 `rechazada` corresponde al evento del historial, no a un estado persistente de la tarea en MongoDB.
 
-### 9. Pruebas implementadas
+### 9. Pruebas internas del subsistema Registro
 
 Las pruebas se ejecutan desde la raíz del repositorio.
 
-#### 9.1. P2: concurrencia y transiciones
+#### 9.1. Concurrencia y transiciones del Registro (prueba interna)
 
 Archivo:
 
@@ -598,9 +652,9 @@ Verifica:
 - Aprobación y rechazo.
 - Exportación paginada.
 
-**P2 fue aprobada internamente.** La prueba definitiva mediante el gateway queda pendiente de integración.
+**La prueba interna de concurrencia y transiciones fue superada.** La validación integrada equivalente mediante el Gateway se mantiene separada de esta prueba interna.
 
-#### 9.2. P3: comandos internos
+#### 9.2. Comandos internos del Registro
 
 Archivo:
 
@@ -625,7 +679,7 @@ Verifica:
 - Rechazo de tokens incorrectos.
 - Reasignación a otro anotador.
 
-#### 9.3. P4: evaluación de índices
+#### 9.3. Evaluación de índices
 
 Archivo:
 
@@ -656,7 +710,7 @@ evidence/p4_indices_explain.json
 
 Los cuatro índices obligatorios fueron evaluados correctamente.
 
-#### 9.4. P5: recuperación de tareas vencidas
+#### 9.4. Recuperación de tareas vencidas
 
 Archivo:
 
@@ -685,7 +739,7 @@ Verifica:
 
 Esta prueba pasó completamente.
 
-#### 9.5. P6: contrato del servicio REST
+#### 9.5. Contrato REST del Registro (prueba interna)
 
 Archivo:
 
@@ -712,7 +766,7 @@ evidence/p6-contrato-registro.json
 
 Este contrato puede utilizarse para implementar la integración con el gateway.
 
-#### 9.6. P8: tolerancia a fallas de MongoDB
+#### 9.6. P8 — Tolerancia a fallas de MongoDB
 
 Archivos:
 
@@ -855,41 +909,45 @@ MongoDB seleccionó automáticamente los índices correspondientes en estas cons
 
 Los resultados demuestran una reducción del número de documentos examinados. Las latencias pueden variar según la computadora y el estado de la caché.
 
-### 11. Integración pendiente con los demás servicios
+### 11. Estado de integración con los demás servicios
 
-La implementación interna del registro está terminada y probada.
+El Gateway, Registro, Sesión, Valkey y MongoDB se encuentran integrados para el flujo operacional de asignación, edición, borradores, envío, liberación, revisión, recuperación y exportación.
 
-Sin embargo, todavía debe integrarse con los otros componentes de la plataforma.
-
-| Componente | Trabajo pendiente |
+| Componente | Estado actual |
 |---|---|
-| Gateway | Consumir las seis rutas internas del registro |
-| Gateway | Publicar las rutas solicitadas en el puerto 8000 |
-| Gateway | Ejecutar P2 completa mediante las rutas públicas |
-| Sesión/Valkey | Administrar locks, sesiones y borradores |
-| Sesión/Valkey | Coordinar renovación y vencimiento con MongoDB |
-| Historial/Parquet | Registrar eventos por cada transición |
-| Historial/Parquet | Deduplicar eventos utilizando `evento_id` |
-| Analítica/Spark | Ejecutar consultas históricas Q1–Q5 |
-| Equipo completo | Validar el flujo distribuido y sus fallas |
+| Gateway → Registro | Integrado |
+| Gateway → Sesión/Valkey | Integrado |
+| Gateway público en `:8000` | Integrado y probado |
+| Locks, sesiones y borradores | Integrados y probados |
+| Renovación y vencimiento MongoDB/Valkey | Integrados y probados |
+| Recuperación de tareas vencidas | Integrada y probada |
+| Historial/Parquet | Pendiente de integración final con el componente correspondiente |
+| Deduplicación histórica por `evento_id` | Pendiente del componente Historial |
+| Analítica/Spark Q1–Q5 | Pendiente del componente Analítica |
+| `/analitica/{q1..q5}` en Gateway | Pendiente de conectar cuando esté disponible Analítica |
+| Flujo distribuido completo con todos los componentes | Pendiente de validación final del equipo |
 
-#### 11.1. Comunicación con el gateway
+#### 11.1. Comunicación con el Gateway
 
-El servicio de registro se encuentra disponible dentro de la red Docker en:
+El servicio Registro está disponible dentro de la red Docker en:
 
 ```text
 http://registro:8001
 ```
 
-El gateway debe utilizar esta dirección y no `localhost:8001`, porque ambos servicios se ejecutan en contenedores diferentes.
+El servicio Sesión está disponible en:
 
-El gateway será el único servicio expuesto al host:
+```text
+http://sesion:8002
+```
+
+El Gateway consume estas direcciones internas y publica únicamente:
 
 ```text
 http://localhost:8000
 ```
 
-Las rutas públicas deben traducirse a las rutas internas del registro.
+Las rutas públicas traducen y coordinan las operaciones necesarias entre Registro y Sesión sin exponer directamente los servicios internos.
 
 #### 11.2. Coordinación con Valkey
 
@@ -897,31 +955,34 @@ MongoDB es la fuente de verdad del estado definitivo de las tareas.
 
 Valkey administra los candados temporales, sesiones y borradores.
 
-La integración debe garantizar que:
+La integración implementada garantiza que:
 
-- El token de MongoDB coincida con el token de sesión.
-- No se mantengan locks huérfanos después de fallas.
-- Los candados se renueven mediante latidos.
-- No se recupere una tarea mientras conserve un lock válido.
-- Un borrador no se confunda con una anotación confirmada.
+- el token operacional coincida con el token de sesión;
+- un candado no pueda adquirirse de nuevo mientras siga vigente;
+- los candados se renueven durante la edición;
+- los borradores se almacenen sin convertirse en anotaciones definitivas;
+- una tarea vencida no se recupere mientras conserve un candado válido;
+- después de una liberación o un envío exitoso se limpien las estructuras temporales correspondientes;
+- el reinicio de Valkey preserve los borradores mediante AOF;
+- una tarea cuyo candado expiró pueda recuperarse operacionalmente y volver a ofrecerse sin doble propiedad.
 
-La implementación actual dispone de las operaciones necesarias para renovar, consultar vencidas y recuperar tareas, pero la coordinación con Valkey todavía debe probarse.
+Esta coordinación fue validada mediante las pruebas de interrupción, recuperación y persistencia descritas más adelante.
 
-#### 11.3. Integración con Parquet
+#### 11.3. Integración con Parquet e Historial
 
-El registro genera identificadores de eventos para las transiciones.
+El Registro genera identificadores de eventos para las transiciones.
 
-Sin embargo, la escritura de esos eventos en Parquet corresponde al servicio de historial.
+La entrega durable de dichos eventos corresponde al servicio de Historial/Parquet y continúa como integración pendiente del equipo.
 
 Debe garantizarse que:
 
-- Una transición confirmada genere su evento correspondiente.
-- Los eventos puedan identificarse por `evento_id`.
-- Los duplicados se manejen correctamente.
-- Un rechazo se registre como `rechazada` en Parquet.
-- Las fallas entre MongoDB y el historial puedan detectarse y reconciliarse.
+- una transición confirmada genere su evento correspondiente;
+- los eventos puedan identificarse mediante `evento_id`;
+- los duplicados se manejen correctamente;
+- un rechazo se registre como `rechazada` en Parquet;
+- las fallas entre MongoDB y el historial puedan detectarse y reconciliarse.
 
-La implementación interna del registro no garantiza todavía la entrega durable de eventos al historial.
+El Registro no escribe directamente archivos Parquet.
 
 ### 12. Solución de problemas
 
@@ -931,34 +992,39 @@ La implementación interna del registro no garantiza todavía la entrega durable
 | MongoDB no está inicializado | Ejecutar `rs.initiate()` solamente en la primera instalación |
 | `already initialized` | No repetir inicialización; utilizar `rs.status()` |
 | No aparece un primario | Comprobar los tres contenedores y el replica set |
-| FastAPI devuelve HTTP 503 | Revisar MongoDB y `docker compose logs registro` |
+| Gateway no responde | Revisar `docker compose logs gateway` y `docker compose ps` |
+| Gateway devuelve `degradado` | Verificar Registro y Sesión |
+| Registro devuelve HTTP 503 | Revisar MongoDB y `docker compose logs registro` |
+| Sesión falla | Revisar Valkey y `docker compose logs sesion` |
+| HTTP 409 | Revisar estado, token, propietario, candado y versión |
+| HTTP 204 | No existen tareas disponibles en el proyecto |
 | No encuentra archivos JSONL | Ejecutar primero el generador |
 | Error de hashes SHA-256 | Regenerar los datos y revisar el manifiesto |
-| HTTP 409 | Revisar estado, token, propietario y versión |
-| HTTP 204 | No existen tareas disponibles en el proyecto |
-| Cambios de Python no se aplican | Reconstruir con `docker compose up -d --build registro` |
-| P8 se interrumpió | Restaurar los tres nodos y verificar `rs.status()` |
-| Una prueba falla después de reiniciar | Comprobar que los servicios estén levantados |
+| Cambios de Python no se aplican | Reconstruir el servicio modificado con `docker compose up -d --build <servicio>` |
+| P8 se interrumpió | Restaurar los nodos afectados y verificar `rs.status()` |
+| Una prueba falla después de reiniciar | Comprobar que todos los servicios requeridos estén levantados |
 
-Para revisar los logs del registro:
+Logs útiles:
 
 ```bash
+docker compose logs --tail=100 gateway
+docker compose logs --tail=100 sesion
 docker compose logs --tail=100 registro
 ```
 
-Para verificar los contenedores:
+Verificar contenedores:
 
 ```bash
 docker compose ps
 ```
 
-Para restaurar MongoDB después de una interrupción:
+Restaurar la infraestructura principal:
 
 ```bash
-docker compose up -d mongo-1 mongo-2 mongo-3
+docker compose up -d mongo-1 mongo-2 mongo-3 valkey registro sesion gateway
 ```
 
-### 13. Estado final del trabajo del Estudiante 1
+### 13. Estado consolidado del subsistema Registro/MongoDB
 
 | Apartado | Estado |
 |---|---|
@@ -967,15 +1033,442 @@ docker compose up -d mongo-1 mongo-2 mongo-3
 | Cinco colecciones y modelos | Completado |
 | Cuatro índices obligatorios | Completado y evaluado |
 | Generador y carga de datos | Completado |
-| Servicio REST FastAPI | Implementado y probado internamente |
-| Asignaciones atómicas y estados | Completado y probado internamente |
+| Servicio REST FastAPI Registro | Implementado y probado |
+| Asignaciones atómicas y estados | Completado y probado |
 | Revisión y exportación paginada | Completado |
-| Prueba P2 interna | Superada |
-| Prueba P8 de MongoDB | Superada |
-| Validación de contrato P6 | Ejecutada |
-| Integración mediante gateway | Pendiente |
-| Coordinación de locks con Valkey | Pendiente de integración |
-| Entrega durable de eventos a Parquet | Pendiente de integración |
+| Prueba interna de concurrencia/transiciones | Superada |
+| P8 de MongoDB | Superada |
+| Contrato REST del Registro | Validado |
+| Integración mediante Gateway | Completada |
+| Coordinación de locks con Valkey | Completada |
+| Recuperación coordinada de tareas vencidas | Completada |
+| Entrega durable de eventos a Parquet | Pendiente del componente Historial |
 
-La implementación interna del subsistema de registro operacional y MongoDB está desarrollada, probada y versionada en Git.
+La implementación del subsistema Registro/MongoDB está integrada con Gateway y Sesión/Valkey. Los pendientes corresponden a los componentes históricos y analíticos del sistema completo.
 
+### 14. Gateway, sesiones y simulador HTTP
+
+La plataforma utiliza un **Gateway FastAPI** como único punto de entrada público. El Gateway publica el puerto `8000` y enruta las solicitudes hacia los servicios internos de Registro y Sesión.
+
+Los servicios internos no publican puertos hacia el host:
+
+- `gateway`: puerto público `8000`;
+- `registro`: puerto interno `8001`;
+- `sesion`: puerto interno `8002`;
+- `valkey`: puerto interno `6379`;
+- `mongo-1`, `mongo-2`, `mongo-3`: puertos internos `27017`.
+
+El simulador se comunica exclusivamente mediante HTTP con el Gateway y no utiliza clientes directos de MongoDB ni Valkey.
+
+#### 14.1. Servicio de Sesión y Valkey
+
+El servicio de Sesión utiliza Valkey 8 para almacenar información temporal asociada con la edición de tareas.
+
+Valkey está configurado con persistencia AOF:
+
+```text
+appendonly yes
+appendfsync everysec
+```
+
+Las estructuras utilizadas son:
+
+```text
+lock:tarea:{id}
+sesion:{anotador}
+borrador:{tarea}
+editando:{proyecto}
+```
+
+Los candados utilizan:
+
+```text
+SET NX PX 120000
+```
+
+por lo que tienen una duración nominal de 120 segundos.
+
+La renovación del candado, actualización del borrador y liberación utilizan operaciones atómicas controladas mediante token.
+
+El servicio de Sesión expone internamente:
+
+| Método | Endpoint | Función |
+|---|---|---|
+| GET | `/salud` | Estado del servicio y Valkey |
+| POST | `/locks/adquirir` | Adquirir candado exclusivo |
+| PUT | `/locks/renovar` | Renovar candado |
+| DELETE | `/locks/liberar` | Liberar candado |
+| PUT | `/borradores/{tarea_id}` | Guardar borrador y renovar sesión |
+| POST | `/sesiones/recuperar` | Recuperar sesión, borrador o consultar candado |
+
+Los borradores no modifican el estado definitivo de la tarea en MongoDB.
+
+#### 14.2. Gateway público
+
+El Gateway implementa actualmente:
+
+| Método | Endpoint |
+|---|---|
+| GET | `/salud` |
+| POST | `/proyectos` |
+| POST | `/proyectos/{id}/lotes` |
+| POST | `/tareas/siguiente` |
+| PUT | `/tareas/{id}/borrador` |
+| POST | `/tareas/{id}/enviar` |
+| POST | `/tareas/{id}/liberar` |
+| POST | `/tareas/{id}/revision` |
+| POST | `/sesiones/recuperar` |
+| GET | `/proyectos/{id}/exportar` |
+
+La integración de `/analitica/{q1..q5}` permanece pendiente del servicio Analítica/Spark.
+
+##### 14.2.1. Asignación de tareas
+
+`POST /tareas/siguiente`:
+
+1. genera un token de sesión;
+2. solicita una tarea al servicio Registro;
+3. adquiere el candado correspondiente mediante Sesión/Valkey;
+4. crea la sesión del anotador;
+5. si la adquisición del candado falla, compensa liberando la asignación operacional;
+6. antes de una nueva asignación puede recuperar tareas vencidas únicamente si no existe un candado válido.
+
+##### 14.2.2. Borradores
+
+`PUT /tareas/{id}/borrador`:
+
+1. valida y renueva la asignación operacional;
+2. guarda el último borrador en Valkey;
+3. renueva el candado de la sesión;
+4. no incrementa la versión de la tarea;
+5. no genera una transición definitiva.
+
+##### 14.2.3. Envío
+
+`POST /tareas/{id}/enviar`:
+
+1. verifica que exista un candado activo;
+2. comprueba que el token coincida;
+3. solicita al Registro la transición definitiva;
+4. si MongoDB confirma la operación, limpia la sesión temporal;
+5. un segundo envío de la misma tarea devuelve conflicto;
+6. si el registro definitivo falla, el borrador permanece disponible para recuperación.
+
+##### 14.2.4. Revisión
+
+El Gateway permite:
+
+```text
+iniciar
+aprobar
+rechazar
+```
+
+Una aprobación lleva la tarea a `aprobada`.
+
+Un rechazo devuelve la tarea operacional a `disponible`; el evento histórico correspondiente debe registrarse como `rechazada`.
+
+#### 14.3. Endpoint de salud
+
+`GET /salud` permanece accesible aunque fallen dependencias internas.
+
+Los estados implementados son:
+
+```text
+operativo
+degradado
+caido
+```
+
+- Registro y Sesión disponibles: `operativo`.
+- Una dependencia no disponible: `degradado`.
+- Registro y Sesión no disponibles: `caido`.
+
+### 15. Simulador HTTP
+
+El directorio:
+
+```text
+simulador/
+```
+
+contiene un simulador de usuarios que se comunica únicamente con el Gateway mediante `httpx`.
+
+Soporta los comandos:
+
+```text
+anotar
+recuperar
+```
+
+Durante una edición normal:
+
+1. solicita una tarea;
+2. envía un borrador cada 2 segundos;
+3. envía la anotación definitiva;
+4. opcionalmente simula revisión y aprobación/rechazo.
+
+También permite interrumpir una sesión antes del envío para comprobar recuperación y persistencia.
+
+Para las pruebas de rendimiento se implementó adicionalmente:
+
+```text
+simulador/carga.py
+```
+
+que genera usuarios virtuales concurrentes y calcula latencias p50, p95 y p99.
+
+### 16. Pruebas oficiales del Gateway, Sesión y simulador
+
+#### 16.1. P1 — Gateway y salud
+
+**Estado: COMPLETADA**
+
+Se verificó:
+
+- `/salud` en estado normal;
+- estado `degradado` al detener una dependencia;
+- estado `caido` al detener Registro y Sesión;
+- el Gateway permaneció accesible durante las fallas;
+- únicamente el Gateway publica un puerto hacia el host;
+- Registro, Sesión, Valkey y MongoDB permanecen en la red interna;
+- el simulador utiliza exclusivamente HTTP contra el Gateway.
+
+Evidencias principales:
+
+```text
+evidence/p1_salud_normal.txt
+evidence/p1_salud_degradado.txt
+evidence/p1_salud_caido.txt
+evidence/p1_puertos.txt
+evidence/p1_simulador_aislamiento.txt
+```
+
+#### 16.2. P3 — Interrupción y recuperación de sesión
+
+**Estado: COMPLETADA**
+
+Se verificó:
+
+1. edición con borradores periódicos;
+2. interrupción del usuario;
+3. recuperación del último borrador;
+4. reinicio de Valkey;
+5. persistencia del borrador mediante AOF;
+6. conservación de la sesión después del reinicio;
+7. expiración del candado;
+8. recuperación operacional de la tarea vencida;
+9. posibilidad de ofrecer nuevamente la tarea sin doble propiedad;
+10. limpieza final de sesión, candado y borrador.
+
+Evidencias:
+
+```text
+evidence/p3_interrupcion.txt
+evidence/p3_recuperacion_inmediata.txt
+evidence/p3_p8_reinicio_valkey.txt
+evidence/p3_recuperacion_post_reinicio.txt
+evidence/p3_lock_vencido.txt
+evidence/p3_reasignacion.txt
+evidence/p3_limpieza_final.txt
+```
+
+#### 16.3. P6 — Carga concurrente
+
+**Estado: COMPLETADA**
+
+La prueba se realizó con:
+
+```text
+10 usuarios
+40 usuarios
+100 usuarios
+```
+
+Para cada nivel se realizaron tres corridas.
+
+Cada corrida utiliza:
+
+```text
+Warmup:                  30 s
+Medición:                90 s
+Intervalo de borrador:    2 s
+```
+
+Se registraron:
+
+- p50 por endpoint;
+- p95 por endpoint;
+- p99 por endpoint;
+- cantidad de muestras;
+- errores;
+- envíos por minuto;
+- uso de CPU y memoria mediante `docker stats`.
+
+##### 16.3.1. Resultados consolidados
+
+| Usuarios | Envíos exitosos | Envíos/min promedio | Errores de asignación |
+|---:|---:|---:|---:|
+| 10 | 30/30 | 6.630 | 0 |
+| 40 | 120/120 | 26.147 | 0 |
+| 100 | 293/300 | 63.708 | 7 |
+
+Latencias promedio de las tres corridas:
+
+| Usuarios | Endpoint | p50 | p95 | p99 |
+|---:|---|---:|---:|---:|
+| 10 | siguiente | 292.870 ms | 300.912 ms | 300.912 ms |
+| 10 | borrador | 148.677 ms | 219.112 ms | 266.443 ms |
+| 10 | enviar | 191.543 ms | 202.947 ms | 202.947 ms |
+| 40 | siguiente | 991.947 ms | 1038.764 ms | 1051.401 ms |
+| 40 | borrador | 484.972 ms | 692.192 ms | 772.597 ms |
+| 40 | enviar | 705.636 ms | 749.484 ms | 759.478 ms |
+| 100 | siguiente | 1845.563 ms | 2422.906 ms | 2483.203 ms |
+| 100 | borrador | 660.879 ms | 1309.929 ms | 1491.501 ms |
+| 100 | enviar | 901.515 ms | 1241.760 ms | 1272.041 ms |
+
+Con 10 y 40 usuarios no se observaron errores.
+
+Con 100 usuarios se observaron siete fallos durante la adquisición de tareas:
+
+```text
+300 solicitudes de asignación
+293 asignaciones exitosas
+7 excepciones del cliente HTTP
+97.67 % de éxito
+2.33 % de error
+```
+
+Los usuarios que obtuvieron una tarea completaron correctamente las operaciones de borrador y envío.
+
+La instrumentación utilizada durante estas corridas contabilizó las excepciones HTTP, pero no almacenó su tipo específico. Por ello, los siete errores no se atribuyen a una causa concreta sin evidencia adicional.
+
+El throughput aumenta al incrementar la concurrencia, pero las latencias también crecen significativamente. A 100 usuarios aparece el primer nivel con fallos de adquisición.
+
+Evidencias:
+
+```text
+evidence/p6_u10_r1.json
+evidence/p6_u10_r2.json
+evidence/p6_u10_r3.json
+
+evidence/p6_u40_r1.json
+evidence/p6_u40_r2.json
+evidence/p6_u40_r3.json
+
+evidence/p6_u100_r1.json
+evidence/p6_u100_r2.json
+evidence/p6_u100_r3.json
+
+evidence/p6_u*_docker_stats.csv
+evidence/p6_maquina.txt
+evidence/p6_resumen_final.json
+evidence/p6_recursos_resumen.json
+```
+
+##### 16.3.2. Análisis de recursos
+
+Durante las nueve ejecuciones de P6 se capturaron periódicamente estadísticas de CPU y memoria mediante `docker stats`.
+
+Las métricas fueron consolidadas por nivel de concurrencia utilizando las tres corridas de cada nivel.
+
+| Servicio | CPU prom. 10 | CPU prom. 40 | CPU prom. 100 | Mem. prom. 10 | Mem. prom. 40 | Mem. prom. 100 |
+|---|---:|---:|---:|---:|---:|---:|
+| Gateway | 10.953 % | 36.349 % | 78.545 % | 98.071 MiB | 154.247 MiB | 209.603 MiB |
+| Registro | 1.840 % | 5.266 % | 14.474 % | 38.360 MiB | 39.612 MiB | 40.436 MiB |
+| Sesión | 4.049 % | 6.924 % | 13.585 % | 42.842 MiB | 43.978 MiB | 45.889 MiB |
+| Valkey | 1.727 % | 1.916 % | 2.483 % | 5.272 MiB | 5.131 MiB | 4.925 MiB |
+| Mongo-1 | 24.825 % | 25.443 % | 36.105 % | 98.483 MiB | 108.243 MiB | 120.518 MiB |
+| Mongo-2 | 21.942 % | 22.812 % | 31.395 % | 87.206 MiB | 92.458 MiB | 104.457 MiB |
+| Mongo-3 | 25.589 % | 22.575 % | 31.052 % | 102.547 MiB | 103.850 MiB | 118.154 MiB |
+
+El componente que presentó el crecimiento más marcado al aumentar la concurrencia fue el Gateway.
+
+Su CPU promedio evolucionó de:
+
+```text
+10 usuarios:   10.953 %
+40 usuarios:   36.349 %
+100 usuarios:  78.545 %
+```
+
+y su memoria promedio aumentó de:
+
+```text
+10 usuarios:    98.071 MiB
+40 usuarios:   154.247 MiB
+100 usuarios:  209.603 MiB
+```
+
+El máximo observado para el Gateway con 100 usuarios fue de `117.05 %` de CPU y `233.1 MiB` de memoria. En `docker stats`, un valor superior a 100 % puede ocurrir cuando un contenedor utiliza capacidad equivalente a más de un núcleo lógico.
+
+Los tres nodos MongoDB también mantuvieron una carga de CPU significativa. Con 100 usuarios registraron promedios entre aproximadamente 31 % y 36 %, con máximos cercanos a 100 %.
+
+Registro y Sesión incrementaron su utilización con la concurrencia, pero permanecieron considerablemente por debajo del Gateway.
+
+Valkey fue el componente con menor utilización de recursos: con 100 usuarios presentó aproximadamente `2.483 %` de CPU promedio y menos de `5 MiB` de memoria promedio.
+
+Las mediciones identifican al Gateway como el componente con mayor presión creciente de recursos. Esto coincide con el incremento de las latencias p95/p99 y con la aparición de errores de adquisición en el nivel de 100 usuarios, aunque las mediciones no permiten atribuir causalidad directa de dichos errores a un componente específico.
+
+En conjunto, P6 muestra que el sistema incrementa su throughput al pasar de 10 a 40 y 100 usuarios, a costa de mayores latencias y, con 100 usuarios, una tasa de error de asignación aproximada de `2.33 %`.
+
+Archivos consolidados:
+
+```text
+evidence/p6_resumen_final.json
+evidence/p6_recursos_resumen.json
+evidence/p6_maquina.txt
+```
+
+Estadísticas originales:
+
+```text
+evidence/p6_u10_r*_docker_stats.csv
+evidence/p6_u40_r*_docker_stats.csv
+evidence/p6_u100_r*_docker_stats.csv
+```
+
+El generador de carga se ejecutó como cliente de la plataforma y sus recursos no se incluyen en las estadísticas consolidadas de los servicios evaluados.
+
+#### 16.4. P8 — Fallas de Valkey y sesiones
+
+**Estado: COMPLETADA para el componente Valkey/Sesión**
+
+Las pruebas de interrupción y recuperación demostraron adicionalmente:
+
+- reinicio de Valkey;
+- persistencia AOF;
+- recuperación del borrador;
+- conservación de información de sesión;
+- expiración del candado;
+- recuperación operacional de la tarea;
+- ausencia de doble propiedad.
+
+La tolerancia a fallas de MongoDB se evaluó por separado en la prueba P8 del subsistema Registro y también fue superada.
+
+### 17. Estado consolidado del Gateway, Sesión y simulador
+
+| Apartado | Estado |
+|---|---|
+| Gateway público `:8000` | Completado |
+| Integración Gateway → Registro | Completada |
+| Integración Gateway → Sesión/Valkey | Completada |
+| Valkey con AOF `everysec` | Completado |
+| Locks con TTL de 120 s | Completado |
+| Sesiones y tokens | Completado |
+| Renovación/heartbeat | Completado |
+| Borradores recuperables | Completado |
+| Liberación y limpieza temporal | Completado |
+| Envío definitivo y protección contra doble envío | Completado |
+| Revisión mediante Gateway | Completada |
+| Recuperación de tareas vencidas | Completada |
+| Simulador HTTP | Completado |
+| P1 | Completada |
+| P3 | Completada |
+| P6 | Completada |
+| P8 — componente Valkey/Sesión | Completada |
+| `/analitica/{q1..q5}` | Pendiente del servicio Analítica |
+| Entrega de eventos a Historial/Parquet | Pendiente del servicio Historial |
+| Validación final end-to-end con todos los subsistemas | Pendiente del equipo completo |
+
+En el estado actual, el flujo operacional Gateway–Registro–Sesión–Valkey–MongoDB se encuentra implementado y probado. Los pendientes restantes corresponden a la integración de Historial/Parquet, Analítica/Spark y a la validación final del sistema completo.

@@ -1,0 +1,43 @@
+{
+  "inicio_utc": "2026-11-18T23:28:51.705408+00:00",
+  "usuarios": 100,
+  "warmup_s": 30.0,
+  "duracion_objetivo_s": 90.0,
+  "duracion_real_s": 92.172,
+  "intervalo_borrador_s": 2.0,
+  "envios_exitosos": 98,
+  "envios_por_minuto": 63.794,
+  "sin_tarea": 0,
+  "endpoints": {
+    "siguiente": {
+      "muestras": 100,
+      "p50_ms": 1907.727,
+      "p95_ms": 2535.118,
+      "p99_ms": 2604.455,
+      "errores": 2,
+      "status": {
+        "200": 98
+      }
+    },
+    "borrador": {
+      "muestras": 4251,
+      "p50_ms": 735.41,
+      "p95_ms": 1239.289,
+      "p99_ms": 1427.233,
+      "errores": 0,
+      "status": {
+        "200": 4251
+      }
+    },
+    "enviar": {
+      "muestras": 98,
+      "p50_ms": 1384.367,
+      "p95_ms": 1538.228,
+      "p99_ms": 1556.813,
+      "errores": 0,
+      "status": {
+        "200": 98
+      }
+    }
+  }
+}
