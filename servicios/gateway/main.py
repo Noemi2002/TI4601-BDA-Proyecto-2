@@ -60,6 +60,180 @@ class SolicitudRevision(BaseModel):
     accion: str
     codigo_motivo: str | None = None
 
+class EtiquetaProyecto(BaseModel):
+    etiqueta: str
+    instruccion: str
+
+
+class SolicitudCrearProyecto(BaseModel):
+    proyecto_id: uuid.UUID
+    cliente_id: uuid.UUID
+    nombre: str
+    modalidad: str
+    geometria: str
+    taxonomia: list[EtiquetaProyecto]
+    prioridad_defecto: int = 2
+    sla_horas: int = 48
+    fecha_limite: str
+
+
+class ArchivoTarea(BaseModel):
+    uri: str
+    sha256: str
+    bytes: int
+    mime: str
+    meta: dict[str, Any] = {}
+
+
+class NuevaTareaGateway(BaseModel):
+    tarea_id: uuid.UUID
+    tipo: str
+    prioridad: int = 2
+    archivo: ArchivoTarea
+
+
+class SolicitudCrearLote(BaseModel):
+    batch_id: uuid.UUID
+    nombre: str
+    descripcion: str = ""
+    tareas: list[NuevaTareaGateway]
+
+@app.post("/proyectos")
+async def crear_proyecto(
+    body: SolicitudCrearProyecto,
+):
+    payload = {
+        "accion": "crear_proyecto",
+        "proyecto_id": str(body.proyecto_id),
+        "cliente_id": str(body.cliente_id),
+        "nombre": body.nombre,
+        "modalidad": body.modalidad,
+        "geometria": body.geometria,
+        "taxonomia": [
+            item.model_dump()
+            for item in body.taxonomia
+        ],
+        "prioridad_defecto": body.prioridad_defecto,
+        "sla_horas": body.sla_horas,
+        "fecha_limite": body.fecha_limite,
+    }
+
+    async with httpx.AsyncClient() as cliente:
+        try:
+            respuesta = await cliente.post(
+                f"{REGISTRO_URL}/comandos",
+                json=payload,
+                timeout=TIMEOUT,
+            )
+        except httpx.HTTPError:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de registro no disponible",
+            )
+
+        try:
+            contenido = respuesta.json()
+        except ValueError:
+            contenido = {"detail": respuesta.text}
+
+        return JSONResponse(
+            status_code=respuesta.status_code,
+            content=contenido,
+        )
+
+
+@app.post("/proyectos/{proyecto_id}/lotes")
+async def crear_lote(
+    proyecto_id: uuid.UUID,
+    body: SolicitudCrearLote,
+):
+    payload = {
+        "accion": "crear_lote",
+        "batch_id": str(body.batch_id),
+        "proyecto_id": str(proyecto_id),
+        "nombre": body.nombre,
+        "descripcion": body.descripcion,
+        "tareas": [
+            {
+                **tarea.model_dump(
+                    exclude={"tarea_id"}
+                ),
+                "tarea_id": str(tarea.tarea_id),
+            }
+            for tarea in body.tareas
+        ],
+    }
+
+    async with httpx.AsyncClient() as cliente:
+        try:
+            respuesta = await cliente.post(
+                f"{REGISTRO_URL}/comandos",
+                json=payload,
+                timeout=TIMEOUT,
+            )
+        except httpx.HTTPError:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de registro no disponible",
+            )
+
+        try:
+            contenido = respuesta.json()
+        except ValueError:
+            contenido = {"detail": respuesta.text}
+
+        return JSONResponse(
+            status_code=respuesta.status_code,
+            content=contenido,
+        )
+
+@app.get("/proyectos/{proyecto_id}/exportar")
+async def exportar_proyecto(
+    proyecto_id: uuid.UUID,
+    pagina: int = 1,
+    limite: int = 50,
+):
+    if pagina < 1:
+        raise HTTPException(
+            status_code=422,
+            detail="pagina debe ser >= 1",
+        )
+
+    if limite < 1 or limite > 100:
+        raise HTTPException(
+            status_code=422,
+            detail="limite debe estar entre 1 y 100",
+        )
+
+    async with httpx.AsyncClient() as cliente:
+        try:
+            respuesta = await cliente.get(
+                f"{REGISTRO_URL}/proyectos/"
+                f"{proyecto_id}/exportar",
+                params={
+                    "pagina": pagina,
+                    "limite": limite,
+                },
+                timeout=TIMEOUT,
+            )
+        except httpx.HTTPError:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de registro no disponible",
+            )
+
+        try:
+            contenido = respuesta.json()
+        except ValueError:
+            contenido = {"detail": respuesta.text}
+
+        return JSONResponse(
+            status_code=respuesta.status_code,
+            content=contenido,
+        )
+
+
+
 
 @app.post("/tareas/{tarea_id}/enviar")
 async def enviar_tarea(
