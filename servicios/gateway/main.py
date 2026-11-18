@@ -1,0 +1,548 @@
+import os
+import uuid
+from typing import Any
+import httpx
+from fastapi import FastAPI, HTTPException, Response
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+
+REGISTRO_URL = os.getenv(
+    "REGISTRO_URL",
+    "http://registro:8001",
+)
+
+SESION_URL = os.getenv(
+    "SESION_URL",
+    "http://sesion:8002",
+)
+
+TIMEOUT = 5.0
+
+
+app = FastAPI(
+    title="Gateway Plataforma de Anotación",
+    version="1.0.0",
+)
+
+
+# =========================================================
+# MODELOS PÚBLICOS
+# =========================================================
+
+class SolicitudSiguiente(BaseModel):
+    proyecto_id: uuid.UUID
+    anotador_id: uuid.UUID
+
+
+class SolicitudBorrador(BaseModel):
+    proyecto_id: uuid.UUID
+    anotador_id: uuid.UUID
+    token: uuid.UUID
+    datos: dict[str, Any]
+
+
+@app.put("/tareas/{tarea_id}/borrador")
+async def guardar_borrador(
+    tarea_id: uuid.UUID,
+    body: SolicitudBorrador,
+):
+    tarea_id_str = str(tarea_id)
+    proyecto_id = str(body.proyecto_id)
+    anotador_id = str(body.anotador_id)
+    token = str(body.token)
+
+    async with httpx.AsyncClient() as cliente:
+
+        # -------------------------------------------------
+        # 1. RENOVAR ASIGNACIÓN DEFINITIVA EN MONGODB
+        # -------------------------------------------------
+
+        try:
+            respuesta_registro = await cliente.post(
+                f"{REGISTRO_URL}/comandos",
+                json={
+                    "accion": "renovar_asignacion",
+                    "tarea_id": tarea_id_str,
+                    "anotador_id": anotador_id,
+                    "token": token,
+                },
+                timeout=TIMEOUT,
+            )
+
+        except httpx.HTTPError:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de registro no disponible",
+            )
+
+        if respuesta_registro.status_code != 200:
+            try:
+                detalle = respuesta_registro.json()
+            except ValueError:
+                detalle = {
+                    "detail": respuesta_registro.text
+                }
+
+            return JSONResponse(
+                status_code=respuesta_registro.status_code,
+                content=detalle,
+            )
+
+        # -------------------------------------------------
+        # 2. GUARDAR BORRADOR Y RENOVAR LOCK EN VALKEY
+        # -------------------------------------------------
+
+        try:
+            respuesta_sesion = await cliente.put(
+                f"{SESION_URL}/borradores/{tarea_id_str}",
+                json={
+                    "proyecto_id": proyecto_id,
+                    "anotador_id": anotador_id,
+                    "token": token,
+                    "datos": body.datos,
+                },
+                timeout=TIMEOUT,
+            )
+
+        except httpx.HTTPError:
+
+            compensada = await liberar_asignacion(
+                cliente,
+                tarea_id_str,
+                anotador_id,
+                token,
+            )
+
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "mensaje": (
+                        "Servicio de sesión no disponible"
+                    ),
+                    "asignacion_compensada": compensada,
+                },
+            )
+
+        if respuesta_sesion.status_code != 200:
+
+            compensada = await liberar_asignacion(
+                cliente,
+                tarea_id_str,
+                anotador_id,
+                token,
+            )
+
+            try:
+                detalle = respuesta_sesion.json()
+            except ValueError:
+                detalle = {
+                    "detail": respuesta_sesion.text
+                }
+
+            return JSONResponse(
+                status_code=respuesta_sesion.status_code,
+                content={
+                    "detail": detalle,
+                    "asignacion_compensada": compensada,
+                },
+            )
+
+        return {
+            "tarea_id": tarea_id_str,
+            "estado": "borrador_guardado",
+            "lock": respuesta_sesion.json(),
+        }
+
+# =========================================================
+# AUXILIARES
+# =========================================================
+
+async def consultar_salud(
+    cliente: httpx.AsyncClient,
+    nombre: str,
+    url: str,
+):
+    try:
+        respuesta = await cliente.get(
+            f"{url}/salud",
+            timeout=2.0,
+        )
+
+        if respuesta.status_code == 200:
+            return {
+                "estado": "disponible",
+                "detalle": respuesta.json(),
+            }
+
+        return {
+            "estado": "no_disponible",
+            "http_status": respuesta.status_code,
+        }
+
+    except httpx.HTTPError:
+        return {
+            "estado": "no_disponible",
+        }
+
+
+async def liberar_asignacion(
+    cliente: httpx.AsyncClient,
+    tarea_id: str,
+    anotador_id: str,
+    token: str,
+) -> bool:
+    """
+    Operación compensatoria.
+
+    Se usa cuando MongoDB ya asignó una tarea,
+    pero no fue posible crear el lock/sesión.
+    """
+
+    payload = {
+        "accion": "liberar_tarea",
+        "tarea_id": tarea_id,
+        "anotador_id": anotador_id,
+        "token": token,
+    }
+
+    try:
+        respuesta = await cliente.post(
+            f"{REGISTRO_URL}/comandos",
+            json=payload,
+            timeout=TIMEOUT,
+        )
+
+        return respuesta.status_code == 200
+
+    except httpx.HTTPError:
+        return False
+
+async def recuperar_vencidas_sin_lock(
+    cliente: httpx.AsyncClient,
+    proyecto_id: str,
+):
+    """
+    Recupera en MongoDB únicamente asignaciones vencidas
+    cuyo lock ya no existe en Valkey.
+
+    Si Sesión/Valkey no puede comprobarse, no se recupera
+    la tarea: se aplica un comportamiento conservador.
+    """
+
+    try:
+        respuesta = await cliente.post(
+            f"{REGISTRO_URL}/comandos",
+            json={
+                "accion": "consultar_vencidas",
+                "proyecto_id": proyecto_id,
+                "limite": 100,
+            },
+            timeout=TIMEOUT,
+        )
+    except httpx.HTTPError:
+        return
+
+    if respuesta.status_code != 200:
+        return
+
+    candidatas = respuesta.json().get(
+        "candidatas",
+        [],
+    )
+
+    for candidata in candidatas:
+        tarea_id = candidata.get("tarea_id")
+        token = candidata.get("token")
+        version = candidata.get("version")
+
+        if not tarea_id or not token or version is None:
+            continue
+
+        # Primero comprobamos Valkey mediante el
+        # servicio de Sesión.
+        try:
+            respuesta_lock = await cliente.post(
+                f"{SESION_URL}/sesiones/recuperar",
+                json={
+                    "tarea_id": tarea_id,
+                    "token": token,
+                },
+                timeout=TIMEOUT,
+            )
+        except httpx.HTTPError:
+            # No podemos demostrar que el lock haya
+            # desaparecido. No recuperamos.
+            continue
+
+        if respuesta_lock.status_code != 200:
+            continue
+
+        lock = respuesta_lock.json().get(
+            "lock",
+            {},
+        )
+
+        # Si todavía existe un lock, la tarea no se toca.
+        if lock.get("activo"):
+            continue
+
+        # El lock ya no existe: ahora sí se permite
+        # recuperar la asignación vencida en MongoDB.
+        try:
+            await cliente.post(
+                f"{REGISTRO_URL}/comandos",
+                json={
+                    "accion": "recuperar_vencida",
+                    "tarea_id": tarea_id,
+                    "token": token,
+                    "version": version,
+                },
+                timeout=TIMEOUT,
+            )
+        except httpx.HTTPError:
+            # Otra solicitud podría haberla recuperado
+            # concurrentemente. No hacemos retry.
+            continue
+
+# =========================================================
+# SALUD
+# =========================================================
+
+@app.get("/salud")
+async def salud():
+    async with httpx.AsyncClient() as cliente:
+
+        registro = await consultar_salud(
+            cliente,
+            "registro",
+            REGISTRO_URL,
+        )
+
+        sesion = await consultar_salud(
+            cliente,
+            "sesion",
+            SESION_URL,
+        )
+
+    disponibles = sum(
+        capa["estado"] == "disponible"
+        for capa in [registro, sesion]
+    )
+
+    if disponibles == 2:
+        estado = "operativo"
+
+    elif disponibles == 0:
+        estado = "caido"
+
+    else:
+        estado = "degradado"
+
+    return {
+        "servicio": "gateway",
+        "estado": estado,
+        "capas": {
+            "registro": registro,
+            "sesion": sesion,
+        },
+    }
+
+
+# =========================================================
+# SIGUIENTE TAREA
+# =========================================================
+
+@app.post("/tareas/siguiente")
+async def siguiente_tarea(body: SolicitudSiguiente):
+
+    proyecto_id = str(body.proyecto_id)
+    anotador_id = str(body.anotador_id)
+
+    # El Gateway genera el token.
+    token = str(uuid.uuid4())
+
+    solicitud_registro = {
+        "proyecto_id": proyecto_id,
+        "anotador_id": anotador_id,
+        "token": token,
+    }
+
+    async with httpx.AsyncClient() as cliente:
+        # Antes de buscar una nueva tarea, devolvemos
+        # a la cola las asignaciones vencidas cuyo
+        # lock de Valkey ya desapareció.
+        await recuperar_vencidas_sin_lock(
+            cliente,
+            proyecto_id,
+        )
+
+        # -------------------------------------------------
+        # 1. ADQUIRIR LA TAREA EN MONGODB
+        # -------------------------------------------------
+
+        try:
+            respuesta_registro = await cliente.post(
+                f"{REGISTRO_URL}/tareas/siguiente",
+                json=solicitud_registro,
+                timeout=TIMEOUT,
+            )
+
+        except httpx.HTTPError:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de registro no disponible",
+            )
+
+        # No hay tareas.
+        if respuesta_registro.status_code == 204:
+            return Response(status_code=204)
+
+        # Propagamos errores producidos por Registro.
+        if respuesta_registro.status_code != 200:
+            try:
+                detalle = respuesta_registro.json()
+            except ValueError:
+                detalle = {
+                    "detail": respuesta_registro.text
+                }
+
+            return JSONResponse(
+                status_code=respuesta_registro.status_code,
+                content=detalle,
+            )
+
+        tarea = respuesta_registro.json()
+
+        tarea_id = tarea.get("tarea_id")
+
+        if not tarea_id:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Registro respondió sin tarea_id"
+                ),
+            )
+
+        # -------------------------------------------------
+        # 2. CREAR LOCK Y SESIÓN
+        # -------------------------------------------------
+
+        solicitud_sesion = {
+            "tarea_id": tarea_id,
+            "proyecto_id": proyecto_id,
+            "anotador_id": anotador_id,
+            "token": token,
+            "etapa": "editando",
+        }
+
+        try:
+            respuesta_sesion = await cliente.post(
+                f"{SESION_URL}/locks/adquirir",
+                json=solicitud_sesion,
+                timeout=TIMEOUT,
+            )
+
+        except httpx.HTTPError:
+
+            compensada = await liberar_asignacion(
+                cliente,
+                tarea_id,
+                anotador_id,
+                token,
+            )
+
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "mensaje": (
+                        "Servicio de sesión no disponible"
+                    ),
+                    "asignacion_compensada": compensada,
+                },
+            )
+
+        # -------------------------------------------------
+        # 3. SI VALKEY RECHAZÓ EL LOCK
+        #    COMPENSAMOS MONGODB
+        # -------------------------------------------------
+
+        if respuesta_sesion.status_code != 200:
+
+            compensada = await liberar_asignacion(
+                cliente,
+                tarea_id,
+                anotador_id,
+                token,
+            )
+
+            try:
+                detalle_sesion = respuesta_sesion.json()
+            except ValueError:
+                detalle_sesion = {
+                    "detail": respuesta_sesion.text
+                }
+
+            status = (
+                respuesta_sesion.status_code
+                if respuesta_sesion.status_code == 409
+                else 503
+            )
+
+            return JSONResponse(
+                status_code=status,
+                content={
+                    "detail": detalle_sesion,
+                    "asignacion_compensada": compensada,
+                },
+            )
+
+        # -------------------------------------------------
+        # 4. BUSCAR BORRADOR RECUPERABLE
+        # -------------------------------------------------
+
+        borrador = None
+
+        try:
+            respuesta_recuperacion = await cliente.post(
+                f"{SESION_URL}/sesiones/recuperar",
+                json={
+                    "anotador_id": anotador_id,
+                },
+                timeout=TIMEOUT,
+            )
+
+            if respuesta_recuperacion.status_code == 200:
+                recuperacion = (
+                    respuesta_recuperacion.json()
+                )
+
+                posible_borrador = recuperacion.get(
+                    "borrador"
+                )
+
+                # Solo consideramos recuperable el
+                # borrador del mismo anotador.
+                if (
+                    posible_borrador
+                    and posible_borrador.get(
+                        "anotador_id"
+                    ) == anotador_id
+                ):
+                    borrador = posible_borrador
+
+        except httpx.HTTPError:
+            # La tarea y su lock ya quedaron creados.
+            # No hacemos fallar toda la asignación solo
+            # porque no haya podido recuperarse borrador.
+            pass
+
+        # -------------------------------------------------
+        # 5. RESPUESTA PÚBLICA
+        # -------------------------------------------------
+
+        return {
+            **tarea,
+            "token": token,
+            "borrador": borrador,
+        }

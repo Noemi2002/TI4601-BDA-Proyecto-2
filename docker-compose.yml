@@ -160,6 +160,38 @@ services:
       retries: 10
 
 
+  gateway:
+    build:
+      context: ./servicios/gateway
+    container_name: proyecto2-gateway
+
+    environment:
+      REGISTRO_URL: http://registro:8001
+      SESION_URL: http://sesion:8002
+
+    depends_on:
+      - registro
+      - sesion
+
+    ports:
+      - "8000:8000"
+
+    networks:
+      - plataforma-net
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/salud', timeout=3).read()"
+        ]
+      interval: 5s
+      timeout: 4s
+      retries: 10
+
+
 volumes:
   mongo1_data:
   mongo2_data:

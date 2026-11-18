@@ -51,7 +51,9 @@ class BorradorRequest(BaseModel):
 
 
 class RecuperarSesionRequest(BaseModel):
-    anotador_id: str
+    anotador_id: str | None = None
+    tarea_id: str | None = None
+    token: str | None = None
 
 
 # =========================================================
@@ -500,9 +502,53 @@ def guardar_borrador(
 # =========================================================
 
 @app.post("/sesiones/recuperar")
-def recuperar_sesion(
-    body: RecuperarSesionRequest,
-):
+def recuperar_sesion(body: RecuperarSesionRequest):
+    # -------------------------------------------------
+    # MODO 1:
+    # consultar el estado de un lock concreto
+    # -------------------------------------------------
+    if body.tarea_id is not None:
+        if body.token is None:
+            raise HTTPException(
+                status_code=422,
+                detail="token es obligatorio al consultar un lock",
+            )
+
+        try:
+            clave = lock_key(body.tarea_id)
+
+            token_actual = valkey.get(clave)
+            ttl_ms = valkey.pttl(clave)
+
+            return {
+                "tarea_id": body.tarea_id,
+                "lock": {
+                    "activo": token_actual is not None,
+                    "token_coincide": (
+                        token_actual == body.token
+                        if token_actual is not None
+                        else False
+                    ),
+                    "ttl_ms": ttl_ms,
+                },
+            }
+
+        except redis.RedisError:
+            raise HTTPException(
+                status_code=503,
+                detail="Valkey no disponible",
+            )
+
+    # -------------------------------------------------
+    # MODO 2:
+    # recuperar sesión de un anotador
+    # -------------------------------------------------
+    if body.anotador_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="anotador_id es obligatorio",
+        )
+
     try:
         sesion = valkey.hgetall(
             sesion_key(body.anotador_id)
@@ -516,52 +562,55 @@ def recuperar_sesion(
 
         tarea_id = sesion.get("tarea_id")
 
-        if not tarea_id:
-            raise HTTPException(
-                status_code=409,
-                detail="La sesión no contiene una tarea",
+        borrador = None
+
+        if tarea_id:
+            datos_borrador = valkey.hgetall(
+                borrador_key(tarea_id)
             )
 
-        borrador = valkey.hgetall(
-            borrador_key(tarea_id)
-        )
+            if datos_borrador:
+                borrador = dict(datos_borrador)
 
-        token_lock = valkey.get(
-            lock_key(tarea_id)
-        )
+                datos_json = borrador.get("datos")
 
-        ttl = valkey.pttl(
-            lock_key(tarea_id)
-        )
+                if datos_json:
+                    try:
+                        borrador["datos"] = json.loads(
+                            datos_json
+                        )
+                    except json.JSONDecodeError:
+                        pass
 
-        if borrador.get("datos"):
-            try:
-                borrador["datos"] = json.loads(
-                    borrador["datos"]
-                )
-            except json.JSONDecodeError:
-                pass
+        token_actual = None
+        ttl_ms = -2
+
+        if tarea_id:
+            token_actual = valkey.get(
+                lock_key(tarea_id)
+            )
+            ttl_ms = valkey.pttl(
+                lock_key(tarea_id)
+            )
 
         return {
             "sesion": sesion,
-            "borrador": (
-                borrador
-                if borrador
-                else None
-            ),
+            "borrador": borrador,
             "lock": {
-                "activo": token_lock is not None,
+                "activo": token_actual is not None,
                 "token_coincide": (
-                    token_lock == sesion.get("token")
+                    token_actual == sesion.get("token")
+                    if token_actual is not None
+                    else False
                 ),
-                "ttl_ms": ttl,
+                "ttl_ms": ttl_ms,
             },
         }
 
     except HTTPException:
         raise
 
-    except RedisError:
+    except redis.RedisError:
         raise HTTPException(
             status_code=503,
             detail="Valkey no disponible",
