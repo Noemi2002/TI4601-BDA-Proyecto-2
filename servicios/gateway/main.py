@@ -46,6 +46,132 @@ class SolicitudLiberar(BaseModel):
     anotador_id: uuid.UUID
     token: uuid.UUID
 
+class SolicitudRecuperarSesion(BaseModel):
+    anotador_id: uuid.UUID
+
+class SolicitudEnviar(BaseModel):
+    proyecto_id: uuid.UUID
+    anotador_id: uuid.UUID
+    token: uuid.UUID
+    anotacion: dict[str, Any]
+
+class SolicitudRevision(BaseModel):
+    revisor_id: uuid.UUID
+    accion: str
+    codigo_motivo: str | None = None
+
+
+@app.post("/tareas/{tarea_id}/enviar")
+async def enviar_tarea(
+    tarea_id: uuid.UUID,
+    body: SolicitudEnviar,
+):
+    tarea_id_str = str(tarea_id)
+    proyecto_id = str(body.proyecto_id)
+    anotador_id = str(body.anotador_id)
+    token = str(body.token)
+
+    async with httpx.AsyncClient() as cliente:
+
+        # 1. Comprobar ownership en Valkey.
+        try:
+            respuesta_lock = await cliente.post(
+                f"{SESION_URL}/sesiones/recuperar",
+                json={
+                    "tarea_id": tarea_id_str,
+                    "token": token,
+                },
+                timeout=TIMEOUT,
+            )
+        except httpx.HTTPError:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de sesión no disponible",
+            )
+
+        if respuesta_lock.status_code != 200:
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "detail": "No se pudo validar el lock de la tarea"
+                },
+            )
+
+        lock = respuesta_lock.json().get("lock", {})
+
+        if (
+            not lock.get("activo")
+            or not lock.get("token_coincide")
+        ):
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "detail": (
+                        "El token no corresponde o "
+                        "el lock ya venció"
+                    )
+                },
+            )
+
+        # 2. Confirmar la anotación en MongoDB.
+        try:
+            respuesta_registro = await cliente.post(
+                f"{REGISTRO_URL}/tareas/{tarea_id_str}/enviar",
+                json={
+                    "anotador_id": anotador_id,
+                    "token": token,
+                    "anotacion": body.anotacion,
+                },
+                timeout=TIMEOUT,
+            )
+
+        except httpx.HTTPError:
+            # Muy importante:
+            # NO borramos el borrador.
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "MongoDB no disponible; "
+                    "el borrador permanece en Valkey"
+                ),
+            )
+
+        if respuesta_registro.status_code != 200:
+            try:
+                detalle = respuesta_registro.json()
+            except ValueError:
+                detalle = {
+                    "detail": respuesta_registro.text
+                }
+
+            return JSONResponse(
+                status_code=respuesta_registro.status_code,
+                content=detalle,
+            )
+
+        resultado = respuesta_registro.json()
+
+        # 3. Mongo confirmó: ahora sí limpiamos
+        # sesión, lock y borrador.
+        try:
+            await cliente.request(
+                "DELETE",
+                f"{SESION_URL}/locks/liberar",
+                json={
+                    "tarea_id": tarea_id_str,
+                    "proyecto_id": proyecto_id,
+                    "anotador_id": anotador_id,
+                    "token": token,
+                    "eliminar_borrador": True,
+                },
+                timeout=TIMEOUT,
+            )
+        except httpx.HTTPError:
+            # Mongo ya confirmó el envío.
+            # No podemos deshacer esa transición.
+            pass
+
+        return resultado
 
 @app.put("/tareas/{tarea_id}/borrador")
 async def guardar_borrador(
@@ -160,6 +286,70 @@ async def guardar_borrador(
         }
 
 
+@app.post("/tareas/{tarea_id}/revision")
+async def revisar_tarea(
+    tarea_id: uuid.UUID,
+    body: SolicitudRevision,
+):
+    tarea_id_str = str(tarea_id)
+
+    if body.accion not in {
+        "iniciar",
+        "aprobar",
+        "rechazar",
+    }:
+        raise HTTPException(
+            status_code=422,
+            detail="Acción de revisión inválida",
+        )
+
+    if (
+        body.accion == "rechazar"
+        and not body.codigo_motivo
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "codigo_motivo es obligatorio "
+                "al rechazar"
+            ),
+        )
+
+    payload = {
+        "revisor_id": str(body.revisor_id),
+        "accion": body.accion,
+    }
+
+    if body.codigo_motivo is not None:
+        payload["codigo_motivo"] = body.codigo_motivo
+
+    async with httpx.AsyncClient() as cliente:
+        try:
+            respuesta = await cliente.post(
+                f"{REGISTRO_URL}/tareas/"
+                f"{tarea_id_str}/revision",
+                json=payload,
+                timeout=TIMEOUT,
+            )
+
+        except httpx.HTTPError:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de registro no disponible",
+            )
+
+        try:
+            contenido = respuesta.json()
+        except ValueError:
+            contenido = {
+                "detail": respuesta.text,
+            }
+
+        return JSONResponse(
+            status_code=respuesta.status_code,
+            content=contenido,
+        )
+
 @app.post("/tareas/{tarea_id}/liberar")
 async def liberar_tarea_publica(
     tarea_id: uuid.UUID,
@@ -253,6 +443,52 @@ async def liberar_tarea_publica(
             "estado": "disponible",
             "liberada": True,
         }
+
+
+@app.post("/sesiones/recuperar")
+async def recuperar_sesion_publica(
+    body: SolicitudRecuperarSesion,
+):
+    anotador_id = str(body.anotador_id)
+
+    async with httpx.AsyncClient() as cliente:
+
+        try:
+            respuesta = await cliente.post(
+                f"{SESION_URL}/sesiones/recuperar",
+                json={
+                    "anotador_id": anotador_id,
+                },
+                timeout=TIMEOUT,
+            )
+
+        except httpx.HTTPError:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de sesión no disponible",
+            )
+
+        if respuesta.status_code != 200:
+            try:
+                detalle = respuesta.json()
+            except ValueError:
+                detalle = {
+                    "detail": respuesta.text,
+                }
+
+            return JSONResponse(
+                status_code=respuesta.status_code,
+                content=detalle,
+            )
+
+        recuperacion = respuesta.json()
+
+        return {
+            "anotador_id": anotador_id,
+            **recuperacion,
+        }
+
+
 # =========================================================
 # AUXILIARES
 # =========================================================
