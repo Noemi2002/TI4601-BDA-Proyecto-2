@@ -8,6 +8,7 @@ services:
     volumes:
       - ./datalake:/datalake
       - ./spark/jobs:/opt/spark/jobs
+      - ./datos:/datos:ro
     networks:
       - plataforma-net
 
