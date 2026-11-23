@@ -1,4 +1,3 @@
-
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -8,6 +7,7 @@ from pymongo import ReturnDocument
 from pymongo.errors import PyMongoError
 
 from database import cliente, db
+from historial_cliente import emitir_evento
 from envios import router as envios_router
 from revisiones import router as revisiones_router
 from exportacion import router as exportacion_router
@@ -122,6 +122,16 @@ def siguiente_tarea(solicitud: SolicitudAsignacion):
         # No quedan tareas disponibles
         if tarea is None:
             return Response(status_code=204)
+
+        emitir_evento(
+            evento_id=evento_id,
+            timestamp=ahora,
+            tarea=tarea,
+            estado_anterior="disponible",
+            estado_nuevo="abierta",
+            anotador_id=anotador_id,
+            toma_ts=tarea["asignacion"]["asignada_en"],
+        )
 
         return {
             "tarea_id": tarea["_id"],
