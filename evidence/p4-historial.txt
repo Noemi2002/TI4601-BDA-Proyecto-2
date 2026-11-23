@@ -1,0 +1,16 @@
+Proyecto b3f242ed-755a-5b7a-9a41-ab68d3aa50fd  anotador ca879ebc-a8b2-5af7-adc4-afb712a5ffa0  datalake /datalake/eventos_p4
+
+OK:    /salud responde (operativo)
+OK:    20 eventos nuevos aceptados (HTTP 202)
+OK:    reenvio de los 20 -> duplicado
+OK:    10 envios simultaneos del mismo evento -> 1 aceptado
+OK:    21 eventos en Parquet, cada uno una sola vez (21 filas)
+OK:    enriquecimiento correcto (cliente_id, sla_seg, equipo_id)
+OK:    no quedan archivos temporales (publicacion atomica)
+OK:    evento de enero en mes=2026-01
+OK:    el rechazo queda como 'rechazada' con su motivo
+OK:    micro-lote publicado solo en 2.1 s (sin /flush)
+OK:    evento invalido -> 422
+OK:    estado desconocido -> 422
+
+RESULTADO: P4 SUPERADA
