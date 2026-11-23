@@ -1,0 +1,245 @@
+26/11/23 03:51:32 INFO SparkContext: Running Spark version 3.5.3
+26/11/23 03:51:32 INFO SparkContext: OS info Linux, 7.2.11-arch1-1, amd64
+26/11/23 03:51:32 INFO SparkContext: Java version 11.0.24
+26/11/23 03:51:32 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+26/11/23 03:51:32 INFO ResourceUtils: ==============================================================
+26/11/23 03:51:32 INFO ResourceUtils: No custom resources configured for spark.driver.
+26/11/23 03:51:32 INFO ResourceUtils: ==============================================================
+26/11/23 03:51:32 INFO SparkContext: Submitted application: consultas-q1-q5
+26/11/23 03:51:32 INFO ResourceProfile: Default ResourceProfile created, executor resources: Map(memory -> name: memory, amount: 1024, script: , vendor: , offHeap -> name: offHeap, amount: 0, script: , vendor: ), task resources: Map(cpus -> name: cpus, amount: 1.0)
+26/11/23 03:51:32 INFO ResourceProfile: Limiting resource is cpu
+26/11/23 03:51:32 INFO ResourceProfileManager: Added ResourceProfile id: 0
+26/11/23 03:51:32 INFO SecurityManager: Changing view acls to: spark
+26/11/23 03:51:32 INFO SecurityManager: Changing modify acls to: spark
+26/11/23 03:51:32 INFO SecurityManager: Changing view acls groups to: 
+26/11/23 03:51:32 INFO SecurityManager: Changing modify acls groups to: 
+26/11/23 03:51:32 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: spark; groups with view permissions: EMPTY; users with modify permissions: spark; groups with modify permissions: EMPTY
+26/11/23 03:51:32 INFO Utils: Successfully started service 'sparkDriver' on port 45381.
+26/11/23 03:51:32 INFO SparkEnv: Registering MapOutputTracker
+26/11/23 03:51:32 INFO SparkEnv: Registering BlockManagerMaster
+26/11/23 03:51:32 INFO BlockManagerMasterEndpoint: Using org.apache.spark.storage.DefaultTopologyMapper for getting topology information
+26/11/23 03:51:32 INFO BlockManagerMasterEndpoint: BlockManagerMasterEndpoint up
+26/11/23 03:51:32 INFO SparkEnv: Registering BlockManagerMasterHeartbeat
+26/11/23 03:51:32 INFO DiskBlockManager: Created local directory at /tmp/blockmgr-c90ae94d-095f-4717-b961-df923d42457c
+26/11/23 03:51:32 INFO MemoryStore: MemoryStore started with capacity 434.4 MiB
+26/11/23 03:51:32 INFO SparkEnv: Registering OutputCommitCoordinator
+26/11/23 03:51:33 INFO JettyUtils: Start Jetty 0.0.0.0:4040 for SparkUI
+26/11/23 03:51:33 INFO Utils: Successfully started service 'SparkUI' on port 4040.
+26/11/23 03:51:33 INFO StandaloneAppClient$ClientEndpoint: Connecting to master spark://spark-master:7077...
+26/11/23 03:51:33 INFO TransportClientFactory: Successfully created connection to spark-master/172.19.0.5:7077 after 27 ms (0 ms spent in bootstraps)
+26/11/23 03:51:33 INFO StandaloneSchedulerBackend: Connected to Spark cluster with app ID app-20261123035133-0002
+26/11/23 03:51:33 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20261123035133-0002/0 on worker-20261123032309-172.19.0.6-45791 (172.19.0.6:45791) with 2 core(s)
+26/11/23 03:51:33 INFO StandaloneSchedulerBackend: Granted executor ID app-20261123035133-0002/0 on hostPort 172.19.0.6:45791 with 2 core(s), 1024.0 MiB RAM
+26/11/23 03:51:33 INFO Utils: Successfully started service 'org.apache.spark.network.netty.NettyBlockTransferService' on port 42997.
+26/11/23 03:51:33 INFO NettyBlockTransferService: Server created on 5cd1ff363029:42997
+26/11/23 03:51:33 INFO BlockManager: Using org.apache.spark.storage.RandomBlockReplicationPolicy for block replication policy
+26/11/23 03:51:33 INFO BlockManagerMaster: Registering BlockManager BlockManagerId(driver, 5cd1ff363029, 42997, None)
+26/11/23 03:51:33 INFO BlockManagerMasterEndpoint: Registering block manager 5cd1ff363029:42997 with 434.4 MiB RAM, BlockManagerId(driver, 5cd1ff363029, 42997, None)
+26/11/23 03:51:33 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261123035133-0002/0 is now RUNNING
+26/11/23 03:51:33 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(driver, 5cd1ff363029, 42997, None)
+26/11/23 03:51:33 INFO BlockManager: Initialized BlockManager: BlockManagerId(driver, 5cd1ff363029, 42997, None)
+26/11/23 03:51:33 INFO StandaloneSchedulerBackend: SchedulerBackend is ready for scheduling beginning after reached minRegisteredResourcesRatio: 0.0
+
+REF=2026-11-23 23:58:19  fuente=/datalake/eventos  executors=1  paralelismo=2
+
+=== Q1: Aprobadas por dia y modalidad, ultimos 90 dias.
+    tiempos (s): [2.488, 0.778, 0.64]
+== Physical Plan ==
+AdaptiveSparkPlan (9)
++- Sort (8)
+   +- Exchange (7)
+      +- HashAggregate (6)
+         +- Exchange (5)
+            +- HashAggregate (4)
+               +- Project (3)
+                  +- Filter (2)
+                     +- Scan parquet  (1)
+
+
+(1) Scan parquet 
+Output [4]: [timestamp#267, modalidad#273, estado_nuevo#279, mes#284]
+Batched: true
+Location: InMemoryFileIndex [file:/datalake/eventos]
+PartitionFilters: [isnotnull(mes#284), (mes#284 >= 2026-08)]
+PushedFilters: [IsNotNull(estado_nuevo), IsNotNull(timestamp), EqualTo(estado_nuevo,aprobada), GreaterThan(timestamp,2026-08-25 23:58:19.0)]
+ReadSchema: struct<timestamp:timestamp,modalidad:string,estado_nuevo:string>
+
+(2) Filter
+Input [4]: [timestamp#267, modalidad#273, estado_nuevo#279, mes#284]
+Condition : (((isnotnull(estado_nuevo#279) AND isnotnull(timestamp#267)) AND (estado_nuevo#279 = aprobada)) AND (timestamp#267 > 2026-08-25 23:58:19))
+
+(3) Project
+Output [2]: [modalidad#273, cast(cast(timestamp#267 as date) as string) AS _groupingexpression#330]
+Input [4]: [timestamp#267, modalidad#273, estado_nuevo#279, mes#284]
+
+(4) HashAggregate
+Input [2]: [modalidad#273, _groupingexpression#330]
+Keys [2]: [_groupingexpression#330, modalidad#273]
+Functions [1]: [partial_count(1)]
+Aggregate Attributes [1]: [count#331L]
+Results [3]: [_groupingexpression#330, modalidad#273, count#332L]
+
+(5) Exchange
+Input [3]: [_groupingexpression#330, modalidad#273, count#332L]
+Arguments: hashpartitioning(_groupingexpression#330, modalidad#273, 200), ENSURE_REQUIREMENTS, [plan_id=361]
+
+(6) HashAggregate
+Input [3]: [_groupingexpression#330, modalidad#273, count#332L]
+Keys [2]: [_groupingexpression#330, modalidad#273]
+Functions [1]: [count(1)]
+Aggregate Attributes [1]: [count(1)#325L]
+Results [3]: [_groupingexpression#330 AS dia#305, modalidad#273, count(1)#325L AS aprobadas#326L]
+
+(7) Exchange
+Input [3]: [dia#305, modalidad#273, aprobadas#326L]
+Arguments: rangepartitioning(dia#305 ASC NULLS FIRST, modalidad#273 ASC NULLS FIRST, 200), ENSURE_REQUIREMENTS, [plan_id=364]
+
+(8) Sort
+Input [3]: [dia#305, modalidad#273, aprobadas#326L]
+Arguments: [dia#305 ASC NULLS FIRST, modalidad#273 ASC NULLS FIRST], true, 0
+
+(9) AdaptiveSparkPlan
+Output [3]: [dia#305, modalidad#273, aprobadas#326L]
+Arguments: isFinalPlan=false
+
+
++----------+---------+---------+
+|dia       |modalidad|aprobadas|
++----------+---------+---------+
+|2026-08-25|texto    |2        |
+|2026-08-26|imagen   |231      |
+|2026-08-26|lidar    |124      |
+|2026-08-26|texto    |210      |
+|2026-08-26|video    |122      |
+|2026-08-27|imagen   |241      |
+|2026-08-27|lidar    |147      |
+|2026-08-27|texto    |231      |
+|2026-08-27|video    |154      |
+|2026-08-28|imagen   |217      |
++----------+---------+---------+
+only showing top 10 rows
+
+=== Q2: Proporcion aprobadas / revisadas por equipo y mes.
+    tiempos (s): [0.874, 0.667, 0.609]
++------------------------------------+-------+---------+---------+----------+
+|equipo_id                           |mes    |aprobadas|revisadas|proporcion|
++------------------------------------+-------+---------+---------+----------+
+|0cb333b1-33b2-5ca2-86f5-1f92eac7249e|2026-03|50       |69       |0.7246    |
+|0cb333b1-33b2-5ca2-86f5-1f92eac7249e|2026-04|713      |843      |0.8458    |
+|0cb333b1-33b2-5ca2-86f5-1f92eac7249e|2026-05|720      |874      |0.8238    |
+|0cb333b1-33b2-5ca2-86f5-1f92eac7249e|2026-06|723      |854      |0.8466    |
+|0cb333b1-33b2-5ca2-86f5-1f92eac7249e|2026-07|705      |843      |0.8363    |
+|0cb333b1-33b2-5ca2-86f5-1f92eac7249e|2026-08|729      |880      |0.8284    |
+|0cb333b1-33b2-5ca2-86f5-1f92eac7249e|2026-09|730      |853      |0.8558    |
+|0cb333b1-33b2-5ca2-86f5-1f92eac7249e|2026-10|744      |905      |0.8221    |
+|0cb333b1-33b2-5ca2-86f5-1f92eac7249e|2026-11|525      |625      |0.84      |
+|19598843-03e5-59b7-adfe-3fcbfde6cf6c|2026-03|67       |75       |0.8933    |
++------------------------------------+-------+---------+---------+----------+
+only showing top 10 rows
+
+=== Q3: Duracion media y percentil 95 por modalidad y tipo de tarea.
+    tiempos (s): [1.336, 0.558, 0.521]
+== Physical Plan ==
+AdaptiveSparkPlan (9)
++- Sort (8)
+   +- Exchange (7)
+      +- ObjectHashAggregate (6)
+         +- Exchange (5)
+            +- ObjectHashAggregate (4)
+               +- Project (3)
+                  +- Filter (2)
+                     +- Scan parquet  (1)
+
+
+(1) Scan parquet 
+Output [5]: [modalidad#973, tipo_tarea#974, estado_nuevo#979, duracion_seg#981, mes#984]
+Batched: true
+Location: InMemoryFileIndex [file:/datalake/eventos]
+PushedFilters: [IsNotNull(estado_nuevo), EqualTo(estado_nuevo,anotada), IsNotNull(duracion_seg)]
+ReadSchema: struct<modalidad:string,tipo_tarea:string,estado_nuevo:string,duracion_seg:int>
+
+(2) Filter
+Input [5]: [modalidad#973, tipo_tarea#974, estado_nuevo#979, duracion_seg#981, mes#984]
+Condition : ((isnotnull(estado_nuevo#979) AND (estado_nuevo#979 = anotada)) AND isnotnull(duracion_seg#981))
+
+(3) Project
+Output [3]: [modalidad#973, tipo_tarea#974, duracion_seg#981]
+Input [5]: [modalidad#973, tipo_tarea#974, estado_nuevo#979, duracion_seg#981, mes#984]
+
+(4) ObjectHashAggregate
+Input [3]: [modalidad#973, tipo_tarea#974, duracion_seg#981]
+Keys [2]: [modalidad#973, tipo_tarea#974]
+Functions [3]: [partial_count(1), partial_avg(duracion_seg#981), partial_percentile(duracion_seg#981, 0.95, 1, 0, 0, false)]
+Aggregate Attributes [4]: [count#1035L, sum#1036, count#1037L, buf#1038]
+Results [6]: [modalidad#973, tipo_tarea#974, count#1039L, sum#1040, count#1041L, buf#1042]
+
+(5) Exchange
+Input [6]: [modalidad#973, tipo_tarea#974, count#1039L, sum#1040, count#1041L, buf#1042]
+Arguments: hashpartitioning(modalidad#973, tipo_tarea#974, 200), ENSURE_REQUIREMENTS, [plan_id=1428]
+
+(6) ObjectHashAggregate
+Input [6]: [modalidad#973, tipo_tarea#974, count#1039L, sum#1040, count#1041L, buf#1042]
+Keys [2]: [modalidad#973, tipo_tarea#974]
+Functions [3]: [count(1), avg(duracion_seg#981), percentile(duracion_seg#981, 0.95, 1, 0, 0, false)]
+Aggregate Attributes [3]: [count(1)#1024L, avg(duracion_seg#981)#1026, percentile(duracion_seg#981, 0.95, 1, 0, 0, false)#1029]
+Results [5]: [modalidad#973, tipo_tarea#974, count(1)#1024L AS n#1025L, round(avg(duracion_seg#981)#1026, 2) AS media_seg#1027, round(percentile(duracion_seg#981, 0.95, 1, 0, 0, false)#1029, 2) AS p95_seg#1028]
+
+(7) Exchange
+Input [5]: [modalidad#973, tipo_tarea#974, n#1025L, media_seg#1027, p95_seg#1028]
+Arguments: rangepartitioning(modalidad#973 ASC NULLS FIRST, tipo_tarea#974 ASC NULLS FIRST, 200), ENSURE_REQUIREMENTS, [plan_id=1431]
+
+(8) Sort
+Input [5]: [modalidad#973, tipo_tarea#974, n#1025L, media_seg#1027, p95_seg#1028]
+Arguments: [modalidad#973 ASC NULLS FIRST, tipo_tarea#974 ASC NULLS FIRST], true, 0
+
+(9) AdaptiveSparkPlan
+Output [5]: [modalidad#973, tipo_tarea#974, n#1025L, media_seg#1027, p95_seg#1028]
+Arguments: isFinalPlan=false
+
+
++---------+-------------------+-----+---------+-------+
+|modalidad|tipo_tarea         |n    |media_seg|p95_seg|
++---------+-------------------+-----+---------+-------+
+|imagen   |deteccion_objetos  |60210|250.64   |503.55 |
+|lidar    |deteccion_3d       |40034|1124.57  |2249.0 |
+|texto    |clasificacion_texto|60364|112.65   |227.0  |
+|video    |seguimiento        |39933|557.57   |1120.0 |
++---------+-------------------+-----+---------+-------+
+
+=== Q4: Proporcion rechazadas / revisadas por cliente y proyecto.
+    tiempos (s): [0.61, 0.467, 0.427]
++------------------------------------+------------------------------------+----------+---------+----------+
+|cliente_id                          |proyecto_id                         |rechazadas|revisadas|proporcion|
++------------------------------------+------------------------------------+----------+---------+----------+
+|042ef5d1-0edd-50e3-b66b-9678902eba2a|81556707-7f86-5855-8216-2060e637d112|263       |1651     |0.1593    |
+|042ef5d1-0edd-50e3-b66b-9678902eba2a|feaeb984-ed64-542d-921f-a069f5686714|261       |1726     |0.1512    |
+|068e3426-73b4-5d28-a3fb-bc411670e4cb|c617ca06-04c3-5161-b442-045d17feb18d|218       |1568     |0.139     |
+|068e3426-73b4-5d28-a3fb-bc411670e4cb|de9a8bb5-c2cb-571a-9d5f-a5165c8fde73|261       |1701     |0.1534    |
+|0f7dba38-9d55-5502-91d4-87cd9991b8ef|275a57a2-d759-5722-8f34-9d054c9f4a23|256       |1626     |0.1574    |
+|0f7dba38-9d55-5502-91d4-87cd9991b8ef|4c637a61-1673-513c-961c-485735af25eb|229       |1578     |0.1451    |
+|0fcc65be-9706-5825-b9f6-1f6980872b77|3b97246d-6bac-571f-884b-d12237baa109|252       |1702     |0.1481    |
+|0fcc65be-9706-5825-b9f6-1f6980872b77|7e0abe7d-9695-5a7d-bfc7-883365e27776|239       |1681     |0.1422    |
+|202dcc06-a0ff-5364-8fdd-ea548a47d45c|61e60081-d9b5-568f-a7ad-9ba23f0966f5|274       |1663     |0.1648    |
+|202dcc06-a0ff-5364-8fdd-ea548a47d45c|f37ea25b-5f7b-5107-b622-e06dfbb97e8b|253       |1699     |0.1489    |
++------------------------------------+------------------------------------+----------+---------+----------+
+only showing top 10 rows
+
+=== Q5: Toma -> aprobacion: p50 y p95 por cliente y % que incumplio el SLA.
+    tiempos (s): [1.383, 0.917, 0.868]
++------------------------------------+----+--------+---------+----------------+
+|cliente_id                          |n   |p50_seg |p95_seg  |pct_incumple_sla|
++------------------------------------+----+--------+---------+----------------+
+|042ef5d1-0edd-50e3-b66b-9678902eba2a|2853|15053.23|180501.78|5.43            |
+|068e3426-73b4-5d28-a3fb-bc411670e4cb|2790|14958.03|158032.43|4.37            |
+|0f7dba38-9d55-5502-91d4-87cd9991b8ef|2719|15050.56|164478.08|4.63            |
+|0fcc65be-9706-5825-b9f6-1f6980872b77|2892|15931.29|189137.74|5.88            |
+|202dcc06-a0ff-5364-8fdd-ea548a47d45c|2835|15698.72|166294.97|4.59            |
+|2cbf7294-cb9d-58ab-b0d5-487abbdd5c9a|2824|15108.57|158458.31|4.57            |
+|36ae9bc2-2719-55e1-9128-4fa1986222be|2980|15771.73|163105.89|4.66            |
+|3a9cc585-62e7-5d6e-8d29-36298a4acc3e|2825|14672.96|173506.47|5.06            |
+|3bcb30a9-baae-56af-ac58-724036e8c570|2787|14707.72|169119.14|4.92            |
+|3c7098c0-f2b0-5479-9aba-57b5c6ca4fee|2821|14748.16|151169.15|4.15            |
++------------------------------------+----+--------+---------+----------------+
+only showing top 10 rows
+
+RESUMEN_TIEMPOS_JSON {"executors": 1, "ref": "2026-11-23 23:58:19", "tiempos_s": {"q1": [2.488, 0.778, 0.64], "q2": [0.874, 0.667, 0.609], "q3": [1.336, 0.558, 0.521], "q4": [0.61, 0.467, 0.427], "q5": [1.383, 0.917, 0.868]}}
