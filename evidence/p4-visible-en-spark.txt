@@ -1,0 +1,4 @@
+LISTO: Spark calentado, esperando la senal de la prueba e2e...
+Senal recibida: evento 69665e75-f49f-4930-82f4-489a57f0684d
+VISIBLE EN SPARK: 3.7 s despues del HTTP 200 (4 consultas, la ultima duro 0.9 s)
+RESUMEN_SPARK_JSON {"evento_id": "69665e75-f49f-4930-82f4-489a57f0684d", "segundos_http200_a_spark": 3.72, "consultas": 4, "duracion_ultima_consulta_s": 0.92, "executors": 2}
