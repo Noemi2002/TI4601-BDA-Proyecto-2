@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 P_RECHAZO = 0.15        # de las tareas revisadas, fraccion rechazada
 P_REINTENTO = 0.85      # tras un rechazo, probabilidad de volver a tomarse
 MAX_INTENTOS = 4
-DIAS_HISTORIAL = 240    # ventana hacia atras desde --hasta
+DIAS_HISTORIAL = 365    # ventana hacia atras desde --hasta
 # lognormal (mu, sigma) de la duracion de anotacion, en ln(segundos)
 DURACION = {
     "texto": (4.6, 0.5),    # ~100 s
@@ -168,6 +168,7 @@ def particion(idx, it, dims, semilla, inicio, hasta):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tareas", type=int, default=175000)
+    ap.add_argument("--dias", type=int, default=DIAS_HISTORIAL)
     ap.add_argument("--hasta", default=datetime.now(timezone.utc).strftime("%Y-%m-%d"))
     ap.add_argument("--semilla", type=int, default=4601)
     ap.add_argument("--datos", default="/datos")
@@ -181,7 +182,8 @@ def main():
                                    StructType, TimestampType)
 
     hasta = datetime.strptime(args.hasta, "%Y-%m-%d").replace(hour=23, minute=59)
-    inicio = hasta - timedelta(days=DIAS_HISTORIAL)
+    inicio = hasta - timedelta(days=args.dias)
+    #inicio = hasta - timedelta(days=DIAS_HISTORIAL)
     dims = cargar_dimensiones(args.datos)
 
     spark = (SparkSession.builder.appName("generar-eventos")
