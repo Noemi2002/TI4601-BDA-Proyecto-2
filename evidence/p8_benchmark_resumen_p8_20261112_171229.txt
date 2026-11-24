@@ -1,0 +1,5 @@
+Benchmark guardado: /app/evidence/p8_benchmark_p8_20261112_171229.csv
+w1: 100/100 confirmadas
+  p50=0.31 ms; p95=0.50 ms; p99=0.56 ms
+majority: 100/100 confirmadas
+  p50=0.91 ms; p95=1.39 ms; p99=1.54 ms

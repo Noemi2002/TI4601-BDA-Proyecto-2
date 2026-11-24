@@ -1,0 +1,10 @@
+Intentos de la sonda: 144
+Escrituras ACK con w=majority: 134
+Intentos sin confirmación: 10
+RPO observado (escrituras ACK no encontradas): 0
+Nota: ERROR no significa necesariamente que la escritura no exista.
+Interrupción observada entre ACK (RTO aproximado): 0.621 s
+Tiempo desde caída confirmada a primer ACK: 0.364 s
+Fase secundario: {'ACK': 43, 'ERROR': 0} (intervalo observado: 17.2 s)
+Fase sin_mayoria: {'ACK': 0, 'ERROR': 6} (intervalo observado: 20.0 s)
+OK: ninguna escritura confirmada por mayoría se perdió

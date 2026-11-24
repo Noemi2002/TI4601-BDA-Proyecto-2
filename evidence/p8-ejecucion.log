@@ -1,0 +1,84 @@
+ID de la ejecución: p8_20261112_171229
+ Container proyecto2-mongo-3 Running 
+ Container proyecto2-registro Running 
+ Container proyecto2-mongo-1 Running 
+ Container proyecto2-mongo-2 Running 
+ Container proyecto2-mongo-2 Waiting 
+ Container proyecto2-mongo-3 Waiting 
+ Container proyecto2-mongo-1 Waiting 
+ Container proyecto2-mongo-2 Healthy 
+ Container proyecto2-mongo-1 Healthy 
+ Container proyecto2-mongo-3 Healthy 
+OK: replica set inicial saludable
+Iniciando sonda de escrituras...
+OK: sonda registrando escrituras
+
+FASE A: Caída de un secundario
+Primario actual: mongo-3
+Secundario que se detendrá: mongo-1
+EVENTO: secundario_inicio
+ Container proyecto2-mongo-1 Stopping 
+ Container proyecto2-mongo-1 Stopped 
+EVENTO: secundario_fin
+ Container proyecto2-mongo-1 Starting 
+ Container proyecto2-mongo-1 Started 
+OK: secundario restaurado
+
+FASE B: Caída del primario
+Primario que se detendrá: mongo-3
+EVENTO: primario_detener_inicio
+ Container proyecto2-mongo-3 Stopping 
+ Container proyecto2-mongo-3 Stopped 
+EVENTO: primario_caido
+Primario anterior: mongo-3
+Nuevo primario: mongo-1
+ Container proyecto2-mongo-3 Starting 
+ Container proyecto2-mongo-3 Started 
+OK: elección y restauración completadas
+
+FASE C: Pérdida de mayoría
+Nodo que quedará encendido: mongo-1
+Nodos que se detendrán: mongo-2 mongo-3
+ Container proyecto2-mongo-2 Stopping 
+ Container proyecto2-mongo-3 Stopping 
+ Container proyecto2-mongo-2 Stopped 
+ Container proyecto2-mongo-3 Stopped 
+EVENTO: sin_mayoria_inicio
+EVENTO: sin_mayoria_fin
+ Container proyecto2-mongo-3 Starting 
+ Container proyecto2-mongo-2 Starting 
+ Container proyecto2-mongo-3 Started 
+ Container proyecto2-mongo-2 Started 
+OK: mayoría restaurada
+
+Deteniendo sonda...
+OK: sonda finalizada
+
+Verificando escrituras confirmadas...
+ Container ti4601-proyecto2-carga-run-bd685b6ddff9 Creating 
+ Container ti4601-proyecto2-carga-run-bd685b6ddff9 Created 
+Intentos de la sonda: 144
+Escrituras ACK con w=majority: 134
+Intentos sin confirmación: 10
+RPO observado (escrituras ACK no encontradas): 0
+Nota: ERROR no significa necesariamente que la escritura no exista.
+Interrupción observada entre ACK (RTO aproximado): 0.621 s
+Tiempo desde caída confirmada a primer ACK: 0.364 s
+Fase secundario: {'ACK': 43, 'ERROR': 0} (intervalo observado: 17.2 s)
+Fase sin_mayoria: {'ACK': 0, 'ERROR': 6} (intervalo observado: 20.0 s)
+OK: ninguna escritura confirmada por mayoría se perdió
+
+Ejecutando benchmark...
+ Container ti4601-proyecto2-carga-run-daff71ad323a Creating 
+ Container ti4601-proyecto2-carga-run-daff71ad323a Created 
+Benchmark guardado: /app/evidence/p8_benchmark_p8_20261112_171229.csv
+w1: 100/100 confirmadas
+  p50=0.31 ms; p95=0.50 ms; p99=0.56 ms
+majority: 100/100 confirmadas
+  p50=0.91 ms; p95=1.39 ms; p99=1.54 ms
+
+======================================
+OK: escenarios P8 terminados
+ID: p8_20261112_171229
+Evidencias guardadas en evidence/
+======================================
