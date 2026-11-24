@@ -8,8 +8,8 @@
 - Git.
 - Docker Engine y Docker Compose v2 (`docker compose`, no `docker-compose`).
 - Docker Desktop con WSL2 puede utilizarse en Windows.
-- Terminal con Bash para ejecutar `pruebas/p8_escenarios.sh` (Linux o WSL2).
-- Recursos suficientes para tres instancias de MongoDB 8.0.4, FastAPI y el contenedor temporal de carga.
+- Terminal con Bash para ejecutar `pruebas/p8_escenarios.sh` y `pruebas/p4_reinicio_buffer.sh` (Linux o WSL2).
+- Recursos suficientes para tres instancias de MongoDB 8.0.4, FastAPI, el contenedor temporal de carga, el servicio Historial y Spark (un master y hasta dos workers con 2 GiB de memoria cada uno).
 
 
 Verificar las instalaciones:
@@ -35,6 +35,7 @@ cd TI4601-BDA-Proyecto-2
 ```text
 TI4601-BDA-Proyecto-2/
 ├── docker-compose.yml
+├── docker-compose.spark.yml
 ├── mongo/
 │   ├── crear_colecciones.js
 │   ├── crear_indices.js
@@ -56,15 +57,26 @@ TI4601-BDA-Proyecto-2/
 │   │   ├── envios.py
 │   │   ├── revisiones.py
 │   │   ├── exportacion.py
-│   │   └── comandos.py
+│   │   ├── comandos.py
+│   │   └── historial_cliente.py
 │   ├── sesion/
 │   │   ├── Dockerfile
 │   │   ├── requirements.txt
 │   │   └── main.py
-│   └── gateway/
+│   ├── gateway/
+│   │   ├── Dockerfile
+│   │   ├── requirements.txt
+│   │   └── main.py
+│   └── historial/
 │       ├── Dockerfile
 │       ├── requirements.txt
 │       └── main.py
+├── spark/
+│   └── jobs/
+│       ├── generar_eventos.py
+│       ├── consultas.py
+│       ├── validar_consultas.py
+│       └── esperar_evento.py
 ├── simulador/
 │   ├── Dockerfile
 │   ├── requirements.txt
@@ -82,7 +94,12 @@ TI4601-BDA-Proyecto-2/
 │   ├── p6_resumen.py
 │   ├── p6_resumen_stats.py
 │   ├── p8_medir.py
-│   └── p8_escenarios.sh
+│   ├── p8_escenarios.sh
+│   ├── p4_historial.py
+│   ├── e2e_rechazo.py
+│   ├── p4_reinicio_buffer.py
+│   └── p4_reinicio_buffer.sh
+├── datalake/
 └── evidence/
 ```
 
@@ -94,6 +111,9 @@ TI4601-BDA-Proyecto-2/
 - `servicios/registro/`: estado operacional y persistencia MongoDB.
 - `servicios/sesion/`: locks, sesiones y borradores sobre Valkey.
 - `servicios/gateway/`: único punto de entrada HTTP público.
+- `servicios/historial/`: recepción de eventos y escritura del datalake Parquet.
+- `spark/jobs/`: generador del historial, consultas Q1–Q5 y su validación.
+- `datalake/`: archivos Parquet (`eventos/mes=AAAA-MM/`) y resultados de las consultas; se genera al ejecutar el generador.
 - `simulador/`: simulación funcional y generación de carga concurrente.
 - `pruebas/`: pruebas internas, aceptación, carga y tolerancia a fallas.
 - `evidence/`: resultados originales y resúmenes consolidados de las pruebas.
@@ -348,6 +368,8 @@ No es necesario volver a inicializar el replica set ni volver a cargar los docum
 
 La información de MongoDB permanece en sus volúmenes y Valkey conserva la información persistida mediante AOF.
 
+Spark y el Historial se inician y detienen con `docker-compose.spark.yml`, después de levantar el compose principal (sección 18).
+
 #### Detener los servicios
 
 ```bash
@@ -410,7 +432,11 @@ La conexión de PyMongo utiliza los tres miembros del replica set:
 mongodb://mongo-1:27017,mongo-2:27017,mongo-3:27017/?replicaSet=rs-plataforma
 ```
 
-Los subsistemas de Historial/Parquet y Analítica/Spark se integran de forma independiente. Las rutas analíticas públicas del Gateway se habilitan cuando el servicio analítico del equipo se encuentre disponible.
+El **Historial** (`historial:8003`, red interna) recibe del Registro un evento por cada transición confirmada por MongoDB y lo publica en el datalake Parquet (`datalake/eventos/mes=AAAA-MM/`). **Spark** lee únicamente esos archivos, en modo de solo lectura; no consulta MongoDB ni el Historial. Ambos se levantan con `docker-compose.spark.yml` (sección 18).
+
+```text
+Registro --POST /eventos--> Historial --micro-lote--> datalake/eventos/mes=AAAA-MM/*.parquet <-- Spark (Q1-Q5)
+```
 
 ### 7. Servicio REST de registro
 
@@ -536,7 +562,7 @@ Las operaciones son:
 
 El rechazo requiere un motivo y devuelve la tarea al estado `disponible`.
 
-En el historial Parquet, el evento correspondiente debe registrarse como `rechazada`. Esta entrega histórica aún debe integrarse.
+En el historial Parquet, el evento correspondiente se registra como `rechazada` (secciones 20 y 21).
 
 #### 7.5. Exportación paginada
 
@@ -921,10 +947,10 @@ El Gateway, Registro, Sesión, Valkey y MongoDB se encuentran integrados para el
 | Locks, sesiones y borradores | Integrados y probados |
 | Renovación y vencimiento MongoDB/Valkey | Integrados y probados |
 | Recuperación de tareas vencidas | Integrada y probada |
-| Historial/Parquet | Pendiente de integración final con el componente correspondiente |
-| Deduplicación histórica por `evento_id` | Pendiente del componente Historial |
-| Analítica/Spark Q1–Q5 | Pendiente del componente Analítica |
-| `/analitica/{q1..q5}` en Gateway | Pendiente de conectar cuando esté disponible Analítica |
+| Historial/Parquet | Integrado y probado (secciones 18 y 20) |
+| Deduplicación histórica por `evento_id` | Completada en el Historial (sección 18) |
+| Analítica/Spark Q1–Q5 | Completada, validada y medida (secciones 19 y 20) |
+| `/analitica/{q1..q5}` en Gateway | Pendiente de conectar; las consultas se ejecutan con `spark-submit` (sección 19) |
 | Flujo distribuido completo con todos los componentes | Pendiente de validación final del equipo |
 
 #### 11.1. Comunicación con el Gateway
@@ -970,19 +996,17 @@ Esta coordinación fue validada mediante las pruebas de interrupción, recuperac
 
 #### 11.3. Integración con Parquet e Historial
 
-El Registro genera identificadores de eventos para las transiciones.
+El Registro genera el `evento_id` de cada transición y, **después de que MongoDB confirma**, lo envía al Historial mediante `POST /eventos` en un hilo aparte (3 reintentos con espera creciente y el mismo `evento_id`). La respuesta HTTP al cliente nunca espera al Historial.
 
-La entrega durable de dichos eventos corresponde al servicio de Historial/Parquet y continúa como integración pendiente del equipo.
+Se garantiza que:
 
-Debe garantizarse que:
+- una transición confirmada genera su evento correspondiente;
+- los eventos se identifican mediante `evento_id`;
+- los duplicados se descartan en el Historial;
+- un rechazo se registra como `rechazada` en Parquet;
+- si el Historial no responde tras los reintentos, el evento se pierde (limitación declarada en la sección 22).
 
-- una transición confirmada genere su evento correspondiente;
-- los eventos puedan identificarse mediante `evento_id`;
-- los duplicados se manejen correctamente;
-- un rechazo se registre como `rechazada` en Parquet;
-- las fallas entre MongoDB y el historial puedan detectarse y reconciliarse.
-
-El Registro no escribe directamente archivos Parquet.
+El Registro no escribe directamente archivos Parquet. El detalle del Historial está en la sección 18.
 
 ### 12. Solución de problemas
 
@@ -1003,6 +1027,10 @@ El Registro no escribe directamente archivos Parquet.
 | Cambios de Python no se aplican | Reconstruir el servicio modificado con `docker compose up -d --build <servicio>` |
 | P8 se interrumpió | Restaurar los nodos afectados y verificar `rs.status()` |
 | Una prueba falla después de reiniciar | Comprobar que todos los servicios requeridos estén levantados |
+| `docker-compose.spark.yml` falla por la red | Levantar primero el compose principal: él crea la red `ti4601-proyecto2_plataforma-net` |
+| Historial en `degradado` o 503 | MongoDB no responde; revisar `docker logs proyecto2-historial` |
+| Spark no ve eventos recién enviados | Esperar el micro-lote (hasta 5 s) o revisar `pendientes_en_buffer` en `/salud` del Historial |
+| Tras regenerar el datalake el Historial deduplica mal | Reiniciar `historial` (carga los `evento_id` del lago al arrancar) |
 
 Logs útiles:
 
@@ -1042,9 +1070,9 @@ docker compose up -d mongo-1 mongo-2 mongo-3 valkey registro sesion gateway
 | Integración mediante Gateway | Completada |
 | Coordinación de locks con Valkey | Completada |
 | Recuperación coordinada de tareas vencidas | Completada |
-| Entrega durable de eventos a Parquet | Pendiente del componente Historial |
+| Entrega durable de eventos a Parquet | Completado (sección 18) |
 
-La implementación del subsistema Registro/MongoDB está integrada con Gateway y Sesión/Valkey. Los pendientes corresponden a los componentes históricos y analíticos del sistema completo.
+La implementación del subsistema Registro/MongoDB está integrada con Gateway, Sesión/Valkey e Historial. El pendiente restante es la ruta `/analitica` del Gateway.
 
 ### 14. Gateway, sesiones y simulador HTTP
 
@@ -1166,7 +1194,7 @@ rechazar
 
 Una aprobación lleva la tarea a `aprobada`.
 
-Un rechazo devuelve la tarea operacional a `disponible`; el evento histórico correspondiente debe registrarse como `rechazada`.
+Un rechazo devuelve la tarea operacional a `disponible`; el evento histórico correspondiente se registra como `rechazada` (sección 21).
 
 #### 14.3. Endpoint de salud
 
@@ -1467,8 +1495,190 @@ La tolerancia a fallas de MongoDB se evaluó por separado en la prueba P8 del su
 | P3 | Completada |
 | P6 | Completada |
 | P8 — componente Valkey/Sesión | Completada |
-| `/analitica/{q1..q5}` | Pendiente del servicio Analítica |
-| Entrega de eventos a Historial/Parquet | Pendiente del servicio Historial |
+| `/analitica/{q1..q5}` | Pendiente de conectar en el Gateway (consultas disponibles con `spark-submit`, sección 19) |
+| Entrega de eventos a Historial/Parquet | Completada (sección 18) |
 | Validación final end-to-end con todos los subsistemas | Pendiente del equipo completo |
 
-En el estado actual, el flujo operacional Gateway–Registro–Sesión–Valkey–MongoDB se encuentra implementado y probado. Los pendientes restantes corresponden a la integración de Historial/Parquet, Analítica/Spark y a la validación final del sistema completo.
+En el estado actual, el flujo operacional Gateway–Registro–Sesión–Valkey–MongoDB se encuentra implementado y probado, sus transiciones se registran en el datalake Parquet y se consultan con Spark. Los pendientes restantes son la ruta `/analitica` del Gateway y la validación final del sistema completo.
+
+### 18. Historial y datalake Parquet
+
+Servicio FastAPI (`servicios/historial/`), un solo proceso, puerto interno `8003` (no se publica al host). Se levanta con `docker-compose.spark.yml`, que se une a la red `plataforma-net` del compose principal.
+
+| Método | Endpoint | Función |
+|---|---|---|
+| POST | `/eventos` | Recibe un evento: `202` aceptado, `200` duplicado, `422` inválido, `503` sin MongoDB ni caché |
+| POST | `/flush` | Interno (pruebas): publica de inmediato el buffer |
+| GET | `/salud` | Estado, MongoDB, buffer pendiente y `evento_id` conocidos |
+
+**Contrato del evento:** `evento_id` (equivale a `event_id` del enunciado), `timestamp`, `mes`, `version`, `tarea_id`, `batch_id`, `proyecto_id`, `cliente_id`, `modalidad`, `tipo_tarea`, `equipo_id`, `anotador_id`, `revisor_id`, `estado_anterior`, `estado_nuevo`, `codigo_motivo`, `duracion_seg`, `toma_ts`, `sla_seg`.
+
+**Mecanismos:**
+
+- **Deduplicación por `evento_id`:** al arrancar carga los `evento_id` del lago y del WAL; un evento repetido responde `duplicado` y no se escribe.
+- **Enriquecimiento:** completa `cliente_id`, `sla_seg` y `equipo_id` leyendo MongoDB (solo lectura, caché de 300 s).
+- **Micro-lotes:** se publican cada 5 s o al llegar a 500 eventos.
+- **Publicación atómica:** cada micro-lote se escribe en un archivo oculto `.tmp-*.parquet` y se publica con `os.replace` en `mes=AAAA-MM/evt-<fecha>-<id>.parquet`. Spark ignora los archivos que empiezan con `.`, por lo que no lee un archivo a medias.
+- **Durabilidad:** cada evento aceptado se guarda en un WAL con `fsync` antes de responder `202`; tras una caída se recupera al arrancar.
+- **Estado de la fila:** el de MongoDB, salvo el rechazo: en MongoDB la tarea vuelve a `disponible` y en Parquet la fila es `rechazada`.
+
+**Arranque** (el compose principal debe estar arriba):
+
+```bash
+docker compose up -d --build registro
+docker compose -f docker-compose.spark.yml up -d spark-master spark-worker-1 historial
+docker compose -f docker-compose.spark.yml --profile dos-workers up -d spark-worker-2   # opcional
+```
+
+**Detención** (nunca `down -v`):
+
+```bash
+docker compose -f docker-compose.spark.yml stop historial spark-worker-2 spark-worker-1 spark-master
+```
+
+### 19. Analítica con Apache Spark
+
+Spark 3.5.3 standalone (master y 1 o 2 workers de 2 cores y 1 GiB por executor). Lee solo `datalake/eventos` y escribe los resultados en `datalake/resultados/q1..q5`.
+
+#### 19.1. Generar el historial
+
+```bash
+docker exec proyecto2-spark-master /opt/spark/bin/spark-submit \
+  --master spark://spark-master:7077 /opt/spark/jobs/generar_eventos.py \
+  --tareas 175000 --dias 365 --hasta 2026-11-23
+```
+
+Resultado: **801 890 eventos** de 175 000 tareas, en 13 particiones `mes=` (2025-11 a 2026-11, extremos parciales). Con la semilla fija (4601) y los mismos parámetros se obtiene el mismo conjunto. Usa los clientes, proyectos, anotadores y equipos reales de `datos/*.jsonl`; los `tarea_id` son sintéticos. Reejecutarlo sobrescribe el datalake: **detener antes el Historial y reiniciarlo después**.
+
+#### 19.2. Consultas
+
+```bash
+docker exec proyecto2-spark-master /opt/spark/bin/spark-submit \
+  --master spark://spark-master:7077 /opt/spark/jobs/consultas.py \
+  [--q q1 q3] [--repeticiones 20] [--explain] [--ref "AAAA-MM-DD HH:MM:SS"]
+```
+
+| Consulta | Definición implementada |
+|---|---|
+| Q1 | Aprobadas por día y modalidad, últimos 90 días. "Hoy" = evento más reciente del lago (se puede fijar con `--ref`) |
+| Q2 | Aprobadas / revisadas por equipo (del anotador) y mes. "Revisadas" = eventos `aprobada` o `rechazada` |
+| Q3 | Duración media y percentil 95 por modalidad y tipo de tarea |
+| Q4 | Rechazadas / revisadas por cliente y proyecto (cuenta las filas `rechazada`) |
+| Q5 | Tiempo entre la última toma y la aprobación: p50 y p95 por cliente y % que superó `sla_seg` |
+
+**Validación:** `spark/jobs/validar_consultas.py` recalcula Q1–Q5 con pandas sobre el mismo Parquet; las cinco coinciden (`evidence/p5-validacion.txt`).
+
+```bash
+python3 -m venv .venv && . .venv/bin/activate && pip install pandas pyarrow
+python3 spark/jobs/validar_consultas.py 2>&1 | tee evidence/p5-validacion.txt
+```
+
+#### 19.3. Planes de ejecución
+
+(`evidence/p5-plan-q1.txt`, `evidence/p5-plan-q3.txt`)
+
+- **Q1:** `PartitionFilters: mes >= 2026-08` (poda de particiones: solo agosto a noviembre), filtros empujados al lector de Parquet y 4 de 19 columnas leídas. Agrupa por día y modalidad (agregación parcial, `Exchange hashpartitioning`, agregación final) y ordena el resultado.
+- **Q3:** sin filtro de partición (usa todo el historial), con poda de columnas y percentil exacto (`ObjectHashAggregate`). El `Sort` final ordena el resultado agregado (4 grupos), no los eventos.
+- Los planes se imprimen antes de ejecutar (`isFinalPlan=false`); AQE ajusta las 200 particiones de shuffle en ejecución.
+
+#### 19.4. Mediciones
+
+Entorno en `evidence/entorno.txt`. Se hicieron 20 repeticiones por consulta; la primera (arranque de JVM, generación de código y metadatos de Parquet) se reporta aparte y los percentiles usan las otras 19 (con n=19, el p99 equivale casi al máximo).
+
+| Consulta | 1 worker: 1.ª / p50 / p95 / p99 (s) | 2 workers: 1.ª / p50 / p95 / p99 (s) |
+|---|---|---|
+| Q1 | 2.26 / 0.468 / 0.723 / 0.964 | 3.14 / 0.507 / 1.389 / 1.485 |
+| Q2 | 0.81 / 0.421 / 0.455 / 0.471 | 0.96 / 0.449 / 0.564 / 0.572 |
+| Q3 | 1.25 / 0.391 / 0.471 / 0.489 | 1.36 / 0.424 / 0.558 / 0.737 |
+| Q4 | 0.51 / 0.355 / 0.404 / 0.414 | 0.68 / 0.369 / 0.486 / 0.517 |
+| Q5 | 1.24 / 0.786 / 0.873 / 0.901 | 1.79 / 0.770 / 0.953 / 0.987 |
+
+Evidencias: `evidence/p5-consultas-1worker.txt` (`executors=1`), `evidence/p5-consultas-2workers.txt` y `evidence/p5-consultas-2workers-repeticion.txt` (`executors=2`).
+
+**Conclusiones:**
+
+- La primera ejecución cuesta entre 1.8 y 7 veces la mediana posterior.
+- Con 2 workers no hay mejora: las diferencias de p50 (−2 % a +8 %) son del tamaño del ruido entre dos corridas idénticas con 2 executors (hasta ±8 %).
+- Los dos workers comparten la máquina y el conjunto es pequeño, por lo que no se puede inferir cómo escalaría un clúster real.
+- El conjunto ampliado (hasta 10 M de filas) no se midió por capacidad de la máquina y tiempo.
+
+### 20. Pruebas P4 (Historial) y P5 (Analítica)
+
+> `pruebas/p4_indices.py` y `pruebas/p5_recuperacion_interna.py` (sección 9) son pruebas internas del Registro; los P4 y P5 oficiales del enunciado son las de esta sección.
+
+#### 20.1. P4: micro-lotes, deduplicación y publicación atómica
+
+Se ejecuta con un Historial y un lago aparte (`eventos_p4`) para no mezclar eventos de prueba:
+
+```bash
+docker compose -f docker-compose.spark.yml run -d --no-deps --name hist-p4 \
+  -e LAGO_DIR=/datalake/eventos_p4 -e FLUSH_SEGUNDOS=2 historial
+docker exec -e LAGO_DIR=/datalake/eventos_p4 -e FLUSH_SEGUNDOS=2 -i hist-p4 python - \
+  < pruebas/p4_historial.py 2>&1 | tee evidence/p4-historial.txt
+docker rm -f hist-p4 && sudo rm -rf datalake/eventos_p4 datalake/eventos_p4_wal
+```
+
+**P4 superada** (`evidence/p4-historial.txt`): 20 eventos nuevos (`202`), reenvío `duplicado`, 10 envíos simultáneos del mismo evento con 1 aceptado, 21 filas en Parquet cada una una vez, enriquecimiento correcto, sin archivos temporales, evento de enero en `mes=2026-01`, rechazo guardado como `rechazada` con su motivo, micro-lote publicado en 2.1 s y `422` ante eventos inválidos.
+
+#### 20.2. Rechazo de extremo a extremo y visibilidad en Spark
+
+```bash
+# Terminal A: Spark calentado, espera la señal
+docker exec proyecto2-spark-master /opt/spark/bin/spark-submit \
+  --master spark://spark-master:7077 /opt/spark/jobs/esperar_evento.py \
+  | tee evidence/p4-visible-en-spark.txt
+# Terminal B
+docker exec -e SENAL=/datalake/_senal_e2e.json -i proyecto2-historial python - \
+  < pruebas/e2e_rechazo.py 2>&1 | tee evidence/e2e-rechazo.txt
+```
+
+Resultado (`evidence/e2e-rechazo.txt`, `evidence/p4-visible-en-spark.txt`):
+
+- Segundo envío de la misma tarea: **HTTP 409**.
+- MongoDB tras el rechazo: `estado=disponible`, asignación vacía, versión 0 → 4.
+- Parquet: `abierta → anotada → en_revision → rechazada`, sin ninguna fila `disponible`, con motivo, revisor y enriquecimiento correctos.
+- Entre el HTTP 200 del rechazo y el evento visible: **2.9 s** en Parquet y **3.7 s** en Spark (Spark ya calentado; la última consulta duró 0.9 s). Es **una sola muestra**; el límite lo fija el micro-lote (≤ 5 s) más la consulta.
+- La prueba se hizo directamente contra el Registro (`registro:8001`), no a través del Gateway.
+
+#### 20.3. Caída del Historial con eventos en buffer
+
+```bash
+bash pruebas/p4_reinicio_buffer.sh 2>&1 | tee evidence/p4-reinicio-historial.txt
+```
+
+Envía 20 eventos, mata el contenedor (`docker kill`) antes de que se publiquen y lo reinicia. Resultado: los 20 se recuperan del WAL, aparecen **exactamente una vez** en Parquet, el reenvío responde `duplicado` y no quedan archivos temporales.
+
+#### 20.4. P5: consultas
+
+Resultados validados contra pandas, planes de Q1 y Q3 y mediciones en las secciones 19.2 a 19.4.
+
+### 21. Recorrido de una tarea y dónde vive cada dato
+
+| Dato | Dónde | Por qué |
+|---|---|---|
+| Estado vigente, versión, asignación, `ultimo_evento_id` | MongoDB | Fuente de verdad del estado |
+| Lock (`lock:tarea:{id}`, 120 s), sesión, borrador | Valkey | Temporales; no deciden el estado definitivo |
+| Una fila por transición (inmutable) | Parquet | Historial para analítica |
+
+1. `POST /tareas/siguiente`: MongoDB asigna la tarea (`abierta`), Valkey guarda lock y sesión y se emite el evento `abierta`.
+2. `PUT /tareas/{id}/borrador` cada 2 s: solo Valkey; no genera evento ni cambia la versión.
+3. `POST /tareas/{id}/enviar`: si MongoDB confirma, HTTP 200 y `anotada`; después se emite el evento.
+4. Revisión: `en_revision` y luego `aprobada` o rechazo.
+
+**Por qué un segundo envío da HTTP 409:** después del primer envío la tarea está `anotada`, no `abierta`. La actualización condicional de MongoDB (estado `abierta`, mismo anotador, mismo token, no vencida) ya no encuentra el documento. Lo decide MongoDB, no Valkey, y no se escribe ninguna fila en el datalake.
+
+**Por qué el rechazo es `disponible` en MongoDB y `rechazada` en Parquet:** MongoDB guarda el estado de trabajo y la tarea debe volver a la cola; Parquet guarda lo que ocurrió, y Q4 cuenta las filas `rechazada`. Si el lago guardara `disponible`, el rechazo se perdería.
+
+**Fallas:** el evento se emite solo después de que MongoDB confirma, así que Parquet no recibe eventos de escrituras no confirmadas. Con un nodo MongoDB caído quedan 2 de 3 (mayoría) y se sigue escribiendo; con dos caídos no hay mayoría y el Registro responde 503 (sección 10.2). Si el Historial cae, el WAL conserva lo aceptado (20.3); si MongoDB cae, el Historial usa su caché de 300 s o responde 503 y el Registro reintenta con el mismo `evento_id`.
+
+### 22. Limitaciones
+
+- **Una sola máquina:** los tres nodos de MongoDB y los workers de Spark comparten CPU, disco y red virtual; no hay latencia de red real ni fallas independientes.
+- **`w:1` vs `w:"majority"`:** la diferencia medida (p50 0.31 ms contra 0.91 ms) es costo local y no se puede extrapolar a un clúster distribuido.
+- **Spark:** 1 contra 2 workers no es una prueba de escalabilidad (mismo hardware, ~800 000 filas); el conjunto ampliado de 10 M de filas no se midió.
+- **Entrega al menos una vez:** si el Historial no responde tras los 3 reintentos del Registro, el evento se pierde; no hay reconciliación con `ultimo_evento_id`.
+- **Un solo proceso Historial:** el conjunto de `evento_id` vive en memoria (801 890 ids) y no escala horizontalmente.
+- **Sin compactación:** los micro-lotes generan archivos pequeños; no se implementó compactación ni se midió su efecto.
+- **Deduplicación en el Historial:** se aplica al escribir; las consultas Spark leen el lago tal cual.
+- **Datos:** 175 000 tareas en lugar de 100 000 de referencia para llegar a ~800 000 eventos en 12 meses, con particiones extremas parciales. Los eventos reales de la prueba e2e se agregaron al mismo lago.
+- **`/analitica/{q1..q5}`:** no conectado al Gateway; las consultas se ejecutan con `spark-submit`.
