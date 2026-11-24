@@ -1,4 +1,3 @@
-
 import hashlib
 import json
 from datetime import datetime, timezone
@@ -14,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 
 from database import cliente, db
+from historial_cliente import emitir_evento
 
 router = APIRouter()
 
@@ -335,6 +335,15 @@ def liberar_tarea(c: LiberarTarea):
             409, "Tarea no abierta o token incorrecto"
         )
 
+    emitir_evento(
+        evento_id=evento_id,
+        timestamp=ahora,
+        tarea=tarea,
+        estado_anterior="abierta",
+        estado_nuevo="disponible",
+        anotador_id=c.anotador_id,
+    )
+
     return {
         "tarea_id": tarea["_id"],
         "estado": tarea["estado"],
@@ -434,7 +443,7 @@ def recuperar_vencida(c: RecuperarVencida):
             },
             "$inc": {"version": 1}
         },
-        return_document=ReturnDocument.AFTER
+        return_document=ReturnDocument.BEFORE
     )
 
     if tarea is None:
@@ -443,10 +452,23 @@ def recuperar_vencida(c: RecuperarVencida):
             "Tarea no vencida o asignacion modificada"
         )
 
+    anotador_previo = (tarea.get("asignacion") or {}).get("anotador_id")
+    version_nueva = tarea["version"] + 1
+
+    emitir_evento(
+        evento_id=evento_id,
+        timestamp=ahora,
+        tarea=tarea,
+        estado_anterior="abierta",
+        estado_nuevo="disponible",
+        anotador_id=anotador_previo,
+        version=version_nueva,
+    )
+
     return {
         "tarea_id": tarea["_id"],
-        "estado": tarea["estado"],
-        "version": tarea["version"],
+        "estado": "disponible",
+        "version": version_nueva,
         "evento_id": evento_id
     }
 

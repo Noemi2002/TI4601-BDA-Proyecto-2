@@ -1,4 +1,3 @@
-
 from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID, uuid4
@@ -9,6 +8,7 @@ from pymongo import ReturnDocument
 from pymongo.errors import PyMongoError
 
 from database import db
+from historial_cliente import emitir_evento
 
 router = APIRouter()
 
@@ -136,6 +136,30 @@ def revisar_tarea(
                 status_code=409,
                 detail="Transicion invalida o revisor incorrecto"
             )
+
+        asig = tarea.get("asignacion") or {}
+        vigente = tarea.get("anotacion_vigente") or {}
+        emitir_evento(
+            evento_id=evento_id,
+            timestamp=ahora,
+            tarea=tarea,
+            estado_anterior=(
+                "anotada" if solicitud.accion == "iniciar"
+                else "en_revision"
+            ),
+            estado_nuevo=estado_evento,
+            # En el rechazo asignacion queda en None: se toma de anotacion_vigente
+            anotador_id=asig.get("anotador_id") or vigente.get("anotador_id"),
+            revisor_id=solicitud.revisor_id,
+            codigo_motivo=(
+                (tarea.get("ultima_revision") or {}).get("codigo_motivo")
+                if estado_evento == "rechazada" else None
+            ),
+            toma_ts=(
+                asig.get("asignada_en")
+                if estado_evento == "aprobada" else None
+            ),
+        )
 
         return {
             "tarea_id": tarea["_id"],
