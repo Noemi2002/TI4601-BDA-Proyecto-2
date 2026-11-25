@@ -135,7 +135,10 @@ def ejecutar(
         try:
             spark, arranque = _sesion()
             from pyspark.sql import functions as F
-            leer = lambda: spark.read.parquet(lago)           # unica fuente: Parquet
+            leer = lambda: (
+                spark.read.parquet(lago)
+                .dropDuplicates(["evento_id"])
+            )           # unica fuente: Parquet
             t0 = time.perf_counter()
             if not ref:
                 ref_txt = leer().agg(

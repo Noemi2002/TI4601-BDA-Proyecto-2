@@ -33,21 +33,16 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import AwareDatetime, BaseModel, Field
-from pymongo import MongoClient
-from pymongo.errors import PyMongoError
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("historial")
 
 LAGO = os.environ.get("LAGO_DIR", "/datalake/eventos").rstrip("/")
-WAL_DIR = os.environ.get("WAL_DIR", LAGO + "_wal")
-MONGO_URI = os.environ.get(
-    "MONGO_URI",
-    "mongodb://mongo-1:27017,mongo-2:27017,mongo-3:27017/?replicaSet=rs-plataforma",
-)
+WAL_DIR = os.environ.get("WAL_DIR", "/datalake/wal").rstrip("/")
 FLUSH_SEG = float(os.environ.get("FLUSH_SEGUNDOS", "5"))
 LOTE_MAX = int(os.environ.get("LOTE_MAX", "500"))
-CACHE_SEG = float(os.environ.get("CACHE_SEGUNDOS", "300"))
+
 
 # Mismo esquema que genera spark/jobs/generar_eventos.py (sin "mes": es la particion)
 SCHEMA = pa.schema([
@@ -77,20 +72,41 @@ COLUMNAS = SCHEMA.names
 class EventoEntrada(BaseModel):
     evento_id: uuid.UUID
     timestamp: AwareDatetime
-    version: int | None = Field(default=None, ge=0)
+    version: int | None = Field(
+        default=None,
+        ge=0,
+    )
     tarea_id: str = Field(min_length=1)
     proyecto_id: str = Field(min_length=1)
     batch_id: str | None = None
+
+    cliente_id: str
+    equipo_id: str | None = None
+    sla_seg: int | None = Field(
+        default=None,
+        ge=0,
+    )
+
     modalidad: str | None = None
     tipo_tarea: str | None = None
     estado_anterior: str | None = None
+
     estado_nuevo: Literal[
-        "disponible", "abierta", "anotada", "en_revision", "aprobada", "rechazada"
+        "disponible",
+        "abierta",
+        "anotada",
+        "en_revision",
+        "aprobada",
+        "rechazada",
     ]
+
     anotador_id: str | None = None
     revisor_id: str | None = None
     codigo_motivo: str | None = None
-    duracion_seg: int | None = Field(default=None, ge=0)
+    duracion_seg: int | None = Field(
+        default=None,
+        ge=0,
+    )
     toma_ts: AwareDatetime | None = None
 
 
@@ -98,8 +114,14 @@ def _utc_iso(dt):
     return dt.astimezone(timezone.utc).isoformat() if dt else None
 
 
-def construir_registro(ev: EventoEntrada, cliente_id, sla_seg, equipo_id) -> dict:
-    ts = ev.timestamp.astimezone(timezone.utc)
+def construir_registro(
+    ev: EventoEntrada,
+) -> dict:
+
+    ts = ev.timestamp.astimezone(
+        timezone.utc
+    )
+
     return {
         "evento_id": str(ev.evento_id),
         "timestamp": ts.isoformat(),
@@ -108,18 +130,20 @@ def construir_registro(ev: EventoEntrada, cliente_id, sla_seg, equipo_id) -> dic
         "tarea_id": ev.tarea_id,
         "batch_id": ev.batch_id,
         "proyecto_id": ev.proyecto_id,
-        "cliente_id": cliente_id,
+        "cliente_id": ev.cliente_id,
         "modalidad": ev.modalidad,
         "tipo_tarea": ev.tipo_tarea,
-        "equipo_id": equipo_id,
+        "equipo_id": ev.equipo_id,
         "anotador_id": ev.anotador_id,
         "revisor_id": ev.revisor_id,
         "estado_anterior": ev.estado_anterior,
         "estado_nuevo": ev.estado_nuevo,
         "codigo_motivo": ev.codigo_motivo,
         "duracion_seg": ev.duracion_seg,
-        "toma_ts": _utc_iso(ev.toma_ts),
-        "sla_seg": sla_seg,
+        "toma_ts": _utc_iso(
+            ev.toma_ts
+        ),
+        "sla_seg": ev.sla_seg,
     }
 
 
@@ -131,54 +155,6 @@ def clave(evento_id: str) -> bytes:
         return str(evento_id).encode()
 
 
-# ------------------------------------------------------------ enriquecimiento
-class Enriquecedor:
-    """Lee proyectos y anotadores de MongoDB (solo lectura) con cache."""
-
-    def __init__(self):
-        self.db = MongoClient(
-            MONGO_URI, serverSelectionTimeoutMS=2000, connectTimeoutMS=2000,
-            readPreference="secondaryPreferred",
-        )["plataforma"]
-        self.cache, self.lock = {}, threading.Lock()
-        self.sin_enriquecer = 0
-
-    def _obtener(self, k, cargar):
-        ahora = time.monotonic()
-        with self.lock:
-            hit = self.cache.get(k)
-        if hit and hit[0] > ahora:
-            return hit[1]
-        valor = cargar()                       # puede lanzar PyMongoError
-        with self.lock:
-            self.cache[k] = (ahora + CACHE_SEG, valor)
-        return valor
-
-    def proyecto(self, proyecto_id):
-        def cargar():
-            d = self.db.proyectos.find_one({"_id": proyecto_id}, {"cliente_id": 1, "sla_horas": 1})
-            return (d["cliente_id"], int(d["sla_horas"]) * 3600) if d else (None, None)
-        return self._obtener(("p", proyecto_id), cargar)
-
-    def equipo(self, anotador_id):
-        if not anotador_id:
-            return None
-
-        def cargar():
-            d = self.db.anotadores.find_one({"_id": anotador_id}, {"equipo_id": 1})
-            return d.get("equipo_id") if d else None
-        return self._obtener(("a", anotador_id), cargar)
-
-    def enriquecer(self, ev: EventoEntrada):
-        cliente_id, sla_seg = self.proyecto(ev.proyecto_id)
-        equipo_id = self.equipo(ev.anotador_id)
-        if cliente_id is None:
-            self.sin_enriquecer += 1
-            log.warning("Proyecto %s no existe en MongoDB (evento %s)", ev.proyecto_id, ev.evento_id)
-        return cliente_id, sla_seg, equipo_id
-
-    def ping(self):
-        self.db.command("ping")
 
 
 # ------------------------------------------------- buffer, WAL y publicacion
@@ -357,7 +333,7 @@ class Almacen:
 
 
 almacen = Almacen()
-enriquecedor = Enriquecedor()
+
 
 
 @asynccontextmanager
@@ -376,20 +352,33 @@ app = FastAPI(
 
 
 @app.post("/eventos", status_code=202)
-def recibir_evento(ev: EventoEntrada, response: Response):
+def recibir_evento(
+    ev: EventoEntrada,
+    response: Response,
+):
     if almacen.visto(ev.evento_id):
         response.status_code = 200
-        return {"estado": "duplicado", "evento_id": str(ev.evento_id)}
-    try:
-        cliente_id, sla_seg, equipo_id = enriquecedor.enriquecer(ev)
-    except PyMongoError as error:
-        raise HTTPException(503, "MongoDB no disponible para completar el evento") from error
-    registro = construir_registro(ev, cliente_id, sla_seg, equipo_id)
+
+        return {
+            "estado": "duplicado",
+            "evento_id": str(ev.evento_id),
+        }
+
+    registro = construir_registro(ev)
+
     if not almacen.agregar(registro):
         response.status_code = 200
-        return {"estado": "duplicado", "evento_id": str(ev.evento_id)}
-    return {"estado": "aceptado", "evento_id": str(ev.evento_id), "mes": registro["mes"]}
 
+        return {
+            "estado": "duplicado",
+            "evento_id": str(ev.evento_id),
+        }
+
+    return {
+        "estado": "aceptado",
+        "evento_id": str(ev.evento_id),
+        "mes": registro["mes"],
+    }
 
 @app.post("/flush")
 def forzar_volcado():
@@ -399,21 +388,27 @@ def forzar_volcado():
 
 @app.get("/salud")
 def salud():
-    try:
-        enriquecedor.ping()
-        mongo = "disponible"
-    except PyMongoError:
-        mongo = "no disponible"
-    escritura = os.access(LAGO, os.W_OK)
+
+    escritura = os.access(
+        LAGO,
+        os.W_OK,
+    )
+
     if not escritura:
-        raise HTTPException(503, "El datalake no es escribible")
+        raise HTTPException(
+            503,
+            "El datalake no es escribible",
+        )
+
     return {
         "servicio": "historial",
-        "estado": "operativo" if mongo == "disponible" else "degradado",
-        "mongodb": mongo,
+        "estado": "operativo",
         "datalake": LAGO,
-        "pendientes_en_buffer": len(almacen.buffer),
-        "evento_id_conocidos": len(almacen.vistos),
-        "sin_enriquecer": enriquecedor.sin_enriquecer,
+        "pendientes_en_buffer": len(
+            almacen.buffer
+        ),
+        "evento_id_conocidos": len(
+            almacen.vistos
+        ),
         **almacen.stats,
     }

@@ -1,0 +1,30 @@
+=== RECUPERACION MEDIANTE /tareas/siguiente ===
+2026-11-24T23:05:39-06:00
+{
+    "tarea_id": "4f332f1a-db22-5cb0-867e-5f0efe59e1d5",
+    "proyecto_id": "b3f242ed-755a-5b7a-9a41-ab68d3aa50fd",
+    "estado": "abierta",
+    "token": "6038a708-308e-45b9-8c09-eaffc014bfb7",
+    "sesion_recuperada": true,
+    "borrador": {
+        "tarea_id": "4f332f1a-db22-5cb0-867e-5f0efe59e1d5",
+        "proyecto_id": "b3f242ed-755a-5b7a-9a41-ab68d3aa50fd",
+        "anotador_id": "ca879ebc-a8b2-5af7-adc4-afb712a5ffa0",
+        "token": "6038a708-308e-45b9-8c09-eaffc014bfb7",
+        "datos": {
+            "geometria": "bbox",
+            "etiquetas": [
+                "imagen#vehiculo"
+            ],
+            "elementos": [
+                {
+                    "x": 120,
+                    "y": 90,
+                    "ancho": 240,
+                    "alto": 150
+                }
+            ]
+        },
+        "actualizado_en": "2026-11-25T05:04:52.899672+00:00"
+    }
+}

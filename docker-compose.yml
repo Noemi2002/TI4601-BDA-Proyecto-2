@@ -168,6 +168,10 @@ services:
     environment:
       REGISTRO_URL: http://registro:8001
       SESION_URL: http://sesion:8002
+      HISTORIAL_URL: http://historial:8003
+      ANALITICA_URL: http://analitica:8004
+      VALKEY_URL: redis://valkey:6379/0
+      SALUD_STREAM_MAXLEN: "200"
 
     depends_on:
       - registro

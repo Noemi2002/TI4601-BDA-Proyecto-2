@@ -1,7 +1,12 @@
+import json
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Any
+
 import httpx
+import redis.asyncio as redis
+from redis.exceptions import RedisError
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -18,12 +23,31 @@ SESION_URL = os.getenv(
     "http://sesion:8002",
 )
 
+VALKEY_URL = os.getenv(
+    "VALKEY_URL",
+    "redis://valkey:6379/0",
+)
+
+SALUD_STREAM_MAXLEN = int(
+    os.getenv(
+        "SALUD_STREAM_MAXLEN",
+        "200",
+    )
+)
+
 TIMEOUT = 5.0
 
 HISTORIAL_URL = os.getenv("HISTORIAL_URL", "http://historial:8003")
 ANALITICA_URL = os.getenv("ANALITICA_URL", "http://analitica:8004")
 # La primera consulta arranca Spark (decenas de segundos), por eso el timeout es largo.
 TIMEOUT_ANALITICA = float(os.getenv("ANALITICA_TIMEOUT", "300"))
+
+valkey_salud = redis.Redis.from_url(
+    VALKEY_URL,
+    decode_responses=True,
+    socket_connect_timeout=2,
+    socket_timeout=2,
+)
 
 app = FastAPI(
     title="Gateway Plataforma de Anotación",
@@ -705,6 +729,117 @@ async def analitica(
 # AUXILIARES
 # =========================================================
 
+async def publicar_salud_en_valkey(
+    capas: dict[str, dict[str, Any]],
+    estado_gateway: str,
+) -> dict[str, Any]:
+    """
+    Mantiene dos estructuras:
+
+    salud:capas
+        Snapshot del último estado conocido.
+
+    salud:mensajes
+        Stream con cambios de estado.
+
+    El fallo de Valkey nunca hace fallar /salud.
+    """
+
+    ahora = datetime.now(
+        timezone.utc
+    ).isoformat()
+
+    estados = {
+        **capas,
+        "gateway": {
+            "estado": estado_gateway,
+        },
+    }
+
+    try:
+        anteriores = await valkey_salud.hgetall(
+            "salud:capas"
+        )
+
+        pipe = valkey_salud.pipeline(
+            transaction=True
+        )
+
+        for nombre, informacion in estados.items():
+            estado_actual = informacion.get(
+                "estado",
+                "desconocido",
+            )
+
+            snapshot = {
+                "capa": nombre,
+                "estado": estado_actual,
+                "actualizado_en": ahora,
+            }
+
+            if "http_status" in informacion:
+                snapshot["http_status"] = (
+                    informacion["http_status"]
+                )
+
+            anterior = None
+
+            if nombre in anteriores:
+                try:
+                    anterior = json.loads(
+                        anteriores[nombre]
+                    ).get("estado")
+                except (
+                    json.JSONDecodeError,
+                    TypeError,
+                ):
+                    anterior = None
+
+            pipe.hset(
+                "salud:capas",
+                nombre,
+                json.dumps(
+                    snapshot,
+                    ensure_ascii=False,
+                ),
+            )
+
+            # Solo generamos un mensaje cuando
+            # el estado cambia.
+            if anterior != estado_actual:
+                pipe.xadd(
+                    "salud:mensajes",
+                    {
+                        "capa": nombre,
+                        "estado_anterior": (
+                            anterior
+                            if anterior is not None
+                            else "sin_registro"
+                        ),
+                        "estado_nuevo": estado_actual,
+                        "timestamp": ahora,
+                    },
+                    maxlen=SALUD_STREAM_MAXLEN,
+                    approximate=True,
+                )
+
+        await pipe.execute()
+
+        return {
+            "estado": "disponible",
+            "snapshot": "salud:capas",
+            "mensajes": "salud:mensajes",
+        }
+
+    except RedisError as exc:
+        return {
+            "estado": "no_disponible",
+            "error": type(exc).__name__,
+        }
+
+
+
+
 async def consultar_salud(
     cliente: httpx.AsyncClient,
     nombre: str,
@@ -871,16 +1006,32 @@ async def salud():
             "sesion",
             SESION_URL,
         )
-        
-        historial = await consultar_salud(cliente, "historial", HISTORIAL_URL)
-        analitica_capa = await consultar_salud(cliente, "analitica", ANALITICA_URL)
+
+        historial = await consultar_salud(
+            cliente,
+            "historial",
+            HISTORIAL_URL,
+        )
+
+        analitica_capa = await consultar_salud(
+            cliente,
+            "analitica",
+            ANALITICA_URL,
+        )
+
+    capas = {
+        "registro": registro,
+        "sesion": sesion,
+        "historial": historial,
+        "analitica": analitica_capa,
+    }
 
     disponibles = sum(
         capa["estado"] == "disponible"
-        for capa in [registro, sesion]
+        for capa in capas.values()
     )
 
-    if disponibles == 2:
+    if disponibles == len(capas):
         estado = "operativo"
 
     elif disponibles == 0:
@@ -889,23 +1040,24 @@ async def salud():
     else:
         estado = "degradado"
 
+    mensajeria_salud = (
+        await publicar_salud_en_valkey(
+            capas,
+            estado,
+        )
+    )
+
     return {
         "servicio": "gateway",
         "estado": estado,
-        "capas": {
-                "capas_analiticas": {
-                    "historial": historial,
-                    "analitica": analitica_capa,
-        },
-            "registro": registro,
-            "sesion": sesion,
-        },
+        "capas": capas,
+        "mensajeria_salud": mensajeria_salud,
     }
-
 
 # =========================================================
 # SIGUIENTE TAREA
 # =========================================================
+
 
 @app.post("/tareas/siguiente")
 async def siguiente_tarea(body: SolicitudSiguiente):
@@ -913,26 +1065,130 @@ async def siguiente_tarea(body: SolicitudSiguiente):
     proyecto_id = str(body.proyecto_id)
     anotador_id = str(body.anotador_id)
 
-    # El Gateway genera el token.
-    token = str(uuid.uuid4())
-
-    solicitud_registro = {
-        "proyecto_id": proyecto_id,
-        "anotador_id": anotador_id,
-        "token": token,
-    }
-
     async with httpx.AsyncClient() as cliente:
-        # Antes de buscar una nueva tarea, devolvemos
-        # a la cola las asignaciones vencidas cuyo
-        # lock de Valkey ya desapareció.
+
+        # -------------------------------------------------
+        # 0. COMPROBAR SI EL ANOTADOR YA TIENE
+        #    UNA SESIÓN ACTIVA
+        # -------------------------------------------------
+
+        try:
+            respuesta_existente = await cliente.post(
+                f"{SESION_URL}/sesiones/recuperar",
+                json={
+                    "anotador_id": anotador_id,
+                },
+                timeout=TIMEOUT,
+            )
+
+        except httpx.HTTPError:
+            # Si no podemos comprobar Sesión/Valkey,
+            # no adquirimos una nueva tarea.
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de sesión no disponible",
+            )
+
+        if respuesta_existente.status_code == 200:
+            recuperacion = respuesta_existente.json()
+
+            sesion_existente = recuperacion.get(
+                "sesion",
+                {},
+            )
+
+            lock_existente = recuperacion.get(
+                "lock",
+                {},
+            )
+
+            if (
+                lock_existente.get("activo")
+                and lock_existente.get(
+                    "token_coincide"
+                )
+            ):
+                proyecto_sesion = sesion_existente.get(
+                    "proyecto_id"
+                )
+
+                # No permitimos que un anotador abra
+                # simultáneamente tareas de otro proyecto.
+                if proyecto_sesion != proyecto_id:
+                    return JSONResponse(
+                        status_code=409,
+                        content={
+                            "detail": (
+                                "El anotador ya posee "
+                                "una sesión activa en "
+                                "otro proyecto"
+                            ),
+                            "sesion": sesion_existente,
+                        },
+                    )
+
+                borrador = recuperacion.get(
+                    "borrador"
+                )
+
+                # El token vigente siempre es el del lock
+                # actual, nunca uno almacenado en un
+                # borrador anterior.
+                if borrador:
+                    borrador = {
+                        **borrador,
+                        "token": sesion_existente.get(
+                            "token"
+                        ),
+                    }
+
+                return {
+                    "tarea_id": sesion_existente.get(
+                        "tarea_id"
+                    ),
+                    "proyecto_id": proyecto_sesion,
+                    "estado": "abierta",
+                    "token": sesion_existente.get(
+                        "token"
+                    ),
+                    "sesion_recuperada": True,
+                    "borrador": borrador,
+                }
+
+        elif respuesta_existente.status_code != 404:
+            try:
+                detalle = respuesta_existente.json()
+            except ValueError:
+                detalle = {
+                    "detail": respuesta_existente.text
+                }
+
+            return JSONResponse(
+                status_code=respuesta_existente.status_code,
+                content=detalle,
+            )
+
+        # -------------------------------------------------
+        # 1. RECUPERAR ASIGNACIONES VENCIDAS
+        # -------------------------------------------------
+
         await recuperar_vencidas_sin_lock(
             cliente,
             proyecto_id,
         )
 
+        # Solo generamos un token cuando realmente
+        # vamos a adquirir una nueva tarea.
+        token = str(uuid.uuid4())
+
+        solicitud_registro = {
+            "proyecto_id": proyecto_id,
+            "anotador_id": anotador_id,
+            "token": token,
+        }
+
         # -------------------------------------------------
-        # 1. ADQUIRIR LA TAREA EN MONGODB
+        # 2. ADQUIRIR TAREA EN MONGODB
         # -------------------------------------------------
 
         try:
@@ -948,11 +1204,9 @@ async def siguiente_tarea(body: SolicitudSiguiente):
                 detail="Servicio de registro no disponible",
             )
 
-        # No hay tareas.
         if respuesta_registro.status_code == 204:
             return Response(status_code=204)
 
-        # Propagamos errores producidos por Registro.
         if respuesta_registro.status_code != 200:
             try:
                 detalle = respuesta_registro.json()
@@ -967,19 +1221,16 @@ async def siguiente_tarea(body: SolicitudSiguiente):
             )
 
         tarea = respuesta_registro.json()
-
         tarea_id = tarea.get("tarea_id")
 
         if not tarea_id:
             raise HTTPException(
                 status_code=502,
-                detail=(
-                    "Registro respondió sin tarea_id"
-                ),
+                detail="Registro respondió sin tarea_id",
             )
 
         # -------------------------------------------------
-        # 2. CREAR LOCK Y SESIÓN
+        # 3. CREAR LOCK Y SESIÓN EN VALKEY
         # -------------------------------------------------
 
         solicitud_sesion = {
@@ -998,7 +1249,6 @@ async def siguiente_tarea(body: SolicitudSiguiente):
             )
 
         except httpx.HTTPError:
-
             compensada = await liberar_asignacion(
                 cliente,
                 tarea_id,
@@ -1016,13 +1266,7 @@ async def siguiente_tarea(body: SolicitudSiguiente):
                 },
             )
 
-        # -------------------------------------------------
-        # 3. SI VALKEY RECHAZÓ EL LOCK
-        #    COMPENSAMOS MONGODB
-        # -------------------------------------------------
-
         if respuesta_sesion.status_code != 200:
-
             compensada = await liberar_asignacion(
                 cliente,
                 tarea_id,
@@ -1031,7 +1275,9 @@ async def siguiente_tarea(body: SolicitudSiguiente):
             )
 
             try:
-                detalle_sesion = respuesta_sesion.json()
+                detalle_sesion = (
+                    respuesta_sesion.json()
+                )
             except ValueError:
                 detalle_sesion = {
                     "detail": respuesta_sesion.text
@@ -1052,21 +1298,26 @@ async def siguiente_tarea(body: SolicitudSiguiente):
             )
 
         # -------------------------------------------------
-        # 4. BUSCAR BORRADOR RECUPERABLE
+        # 4. BUSCAR BORRADOR DE LA TAREA REASIGNADA
         # -------------------------------------------------
 
         borrador = None
 
         try:
-            respuesta_recuperacion = await cliente.post(
-                f"{SESION_URL}/sesiones/recuperar",
-                json={
-                    "anotador_id": anotador_id,
-                },
-                timeout=TIMEOUT,
+            respuesta_recuperacion = (
+                await cliente.post(
+                    f"{SESION_URL}/sesiones/recuperar",
+                    json={
+                        "anotador_id": anotador_id,
+                    },
+                    timeout=TIMEOUT,
+                )
             )
 
-            if respuesta_recuperacion.status_code == 200:
+            if (
+                respuesta_recuperacion.status_code
+                == 200
+            ):
                 recuperacion = (
                     respuesta_recuperacion.json()
                 )
@@ -1075,28 +1326,36 @@ async def siguiente_tarea(body: SolicitudSiguiente):
                     "borrador"
                 )
 
-                # Solo consideramos recuperable el
-                # borrador del mismo anotador.
                 if (
                     posible_borrador
+                    and posible_borrador.get(
+                        "tarea_id"
+                    ) == tarea_id
+                    and posible_borrador.get(
+                        "proyecto_id"
+                    ) == proyecto_id
                     and posible_borrador.get(
                         "anotador_id"
                     ) == anotador_id
                 ):
-                    borrador = posible_borrador
+                    # El contenido antiguo sigue siendo
+                    # recuperable, pero el token válido es
+                    # el de la nueva adquisición.
+                    borrador = {
+                        **posible_borrador,
+                        "token": token,
+                    }
 
         except httpx.HTTPError:
-            # La tarea y su lock ya quedaron creados.
-            # No hacemos fallar toda la asignación solo
-            # porque no haya podido recuperarse borrador.
             pass
 
         # -------------------------------------------------
-        # 5. RESPUESTA PÚBLICA
+        # 5. RESPUESTA
         # -------------------------------------------------
 
         return {
             **tarea,
             "token": token,
+            "sesion_recuperada": False,
             "borrador": borrador,
         }

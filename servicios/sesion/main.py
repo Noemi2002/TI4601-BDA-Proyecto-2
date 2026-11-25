@@ -533,7 +533,7 @@ def recuperar_sesion(body: RecuperarSesionRequest):
                 },
             }
 
-        except redis.RedisError:
+        except RedisError:
             raise HTTPException(
                 status_code=503,
                 detail="Valkey no disponible",
@@ -610,7 +610,7 @@ def recuperar_sesion(body: RecuperarSesionRequest):
     except HTTPException:
         raise
 
-    except redis.RedisError:
+    except RedisError:
         raise HTTPException(
             status_code=503,
             detail="Valkey no disponible",

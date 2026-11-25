@@ -141,6 +141,41 @@ def emitir_evento(
     if not ACTIVO:
         return
     try:
+        proyecto_id = tarea.get("proyecto_id")
+
+        proyecto = db.proyectos.find_one(
+            {"_id": proyecto_id},
+            {
+                "cliente_id": 1,
+                "sla_horas": 1,
+            },
+        )
+
+        if proyecto is None:
+            raise ValueError(
+                f"Proyecto {proyecto_id} no encontrado "
+                "al construir evento historico"
+            )
+
+        cliente_id = proyecto.get("cliente_id")
+
+        sla_horas = proyecto.get("sla_horas")
+        sla_seg = (
+            int(sla_horas) * 3600
+            if sla_horas is not None
+            else None
+        )
+
+        equipo_id = None
+
+        if anotador_id:
+            anotador = db.anotadores.find_one(
+                {"_id": str(anotador_id)},
+                {"equipo_id": 1},
+            )
+
+            if anotador:
+                equipo_id = anotador.get("equipo_id")
         evento = {
             "evento_id": str(evento_id),
             "timestamp": a_utc(timestamp),
@@ -152,6 +187,9 @@ def emitir_evento(
             "tipo_tarea": tarea.get("tipo"),
             "estado_anterior": estado_anterior,
             "estado_nuevo": estado_nuevo,
+            "cliente_id": cliente_id,
+            "equipo_id": equipo_id,
+            "sla_seg": sla_seg,
             "anotador_id": str(anotador_id) if anotador_id else None,
             "revisor_id": str(revisor_id) if revisor_id else None,
             "codigo_motivo": codigo_motivo,

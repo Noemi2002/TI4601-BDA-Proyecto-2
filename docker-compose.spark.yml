@@ -49,7 +49,7 @@ services:
     build: ./servicios/historial
     container_name: proyecto2-historial
     environment:
-      MONGO_URI: mongodb://mongo-1:27017,mongo-2:27017,mongo-3:27017/?replicaSet=rs-plataforma
+      
       LAGO_DIR: /datalake/eventos
     volumes:
       - ./datalake:/datalake
