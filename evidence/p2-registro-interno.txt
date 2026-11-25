@@ -1,0 +1,20 @@
+Fecha: 2026-11-12T20:37:34.229699+00:00
+Solicitudes: 50
+Tareas disponibles: 10
+Respuestas HTTP: {200: 10, 204: 40}
+IDs asignados: 10
+p50: 163.39 ms
+p95: 175.49 ms
+p99: 187.71 ms
+OK: 10 asignaciones sin duplicados
+OK: token incorrecto devuelve HTTP 409
+OK: primer envio devuelve HTTP 200
+OK: segundo envio devuelve HTTP 409
+OK: tarea anotada y version incrementada
+OK: inicio de revision
+OK: aprobacion de tarea
+OK: aprobacion duplicada devuelve 409
+OK: rechazo con motivo y retorno a disponible
+OK: exportacion paginada solo de aprobadas
+OK: flujo operacional de prueba completado
+Conjunto temporal eliminado
