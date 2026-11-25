@@ -1,0 +1,37 @@
+=== P3 - EDAD DEL BORRADOR RECUPERADO ===
+
+{
+  "tarea_id": "4f332f1a-db22-5cb0-867e-5f0efe59e1d5",
+  "proyecto_id": "b3f242ed-755a-5b7a-9a41-ab68d3aa50fd",
+  "estado": "abierta",
+  "token": "550d786b-a568-4ac7-b65f-48e6fe0ae273",
+  "sesion_recuperada": true,
+  "borrador": {
+    "tarea_id": "4f332f1a-db22-5cb0-867e-5f0efe59e1d5",
+    "proyecto_id": "b3f242ed-755a-5b7a-9a41-ab68d3aa50fd",
+    "anotador_id": "ca879ebc-a8b2-5af7-adc4-afb712a5ffa0",
+    "token": "550d786b-a568-4ac7-b65f-48e6fe0ae273",
+    "datos": {
+      "geometria": "bbox",
+      "etiquetas": [
+        "imagen#vehiculo"
+      ],
+      "elementos": [
+        {
+          "x": 120,
+          "y": 90,
+          "ancho": 240,
+          "alto": 150
+        }
+      ]
+    },
+    "actualizado_en": "2026-11-25T05:09:20.370321+00:00"
+  }
+}
+
+Borrador actualizado en: 2026-11-25T05:09:20.370321+00:00
+Recuperado en:          2026-11-25T05:09:22.449643+00:00
+Edad del borrador:      2.079 s
+Cumple <= 5 s:          SI
+Sesión recuperada:      True
+Token coincide:          True

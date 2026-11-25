@@ -1,0 +1,14 @@
+=== P1 - ESTADO NORMAL ===
+2026-11-18T16:44:46-06:00
+
+{"servicio":"gateway","estado":"operativo","capas":{"registro":{"estado":"disponible","detalle":{"servicio":"registro","estado":"operativo","mongodb":"disponible"}},"sesion":{"estado":"disponible","detalle":{"servicio":"sesion","estado":"operativo","valkey":"disponible","persistencia":{"appendonly":"yes","appendfsync":"everysec"}}}}}
+HTTP_CODE=200
+
+NAME                 IMAGE                       COMMAND                  SERVICE    CREATED             STATUS                       PORTS
+proyecto2-gateway    ti4601-proyecto2-gateway    "uvicorn main:app --…"   gateway    15 minutes ago      Up 15 minutes (healthy)      0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+proyecto2-mongo-1    mongo:8.0.4                 "docker-entrypoint.s…"   mongo-1    2 hours ago         Up 2 hours (healthy)         27017/tcp
+proyecto2-mongo-2    mongo:8.0.4                 "docker-entrypoint.s…"   mongo-2    2 hours ago         Up 2 hours (healthy)         27017/tcp
+proyecto2-mongo-3    mongo:8.0.4                 "docker-entrypoint.s…"   mongo-3    2 hours ago         Up 2 hours (healthy)         27017/tcp
+proyecto2-registro   ti4601-proyecto2-registro   "uvicorn main:app --…"   registro   2 hours ago         Up 2 hours                   
+proyecto2-sesion     ti4601-proyecto2-sesion     "uvicorn main:app --…"   sesion     About an hour ago   Up About an hour (healthy)   
+proyecto2-valkey     valkey/valkey:8             "tini -- docker-entr…"   valkey     4 hours ago         Up 6 minutes (healthy)       6379/tcp

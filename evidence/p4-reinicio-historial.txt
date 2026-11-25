@@ -1,0 +1,28 @@
+Fecha: 2026-11-23T21:46:37Z
+Objetivo: matar el Historial con eventos en buffer y comprobar que el WAL los recupera una sola vez.
+ Container hist-p4 Creating 
+ Container hist-p4 Created 
+
+== 1. Enviar 20 eventos (quedan en buffer + WAL)
+OK:    20 eventos aceptados (HTTP 202)
+OK:    antes de la caida: 20 en buffer y 0 en Parquet
+
+== 2. docker kill (caida abrupta, sin cierre ordenado)
+contenedor detenido a las 21:46:47Z
+
+== 3. docker start (recuperacion)
+servicio de nuevo en linea tras ~2 s
+2026-11-23 21:46:41,113 INFO Deduplicacion: 0 evento_id leidos del datalake en 0.0 s
+2026-11-23 21:46:48,043 INFO Deduplicacion: 0 evento_id leidos del datalake en 0.0 s
+2026-11-23 21:46:48,047 WARNING WAL: 20 eventos recuperados, se publicaran en el proximo volcado
+
+== 4. Verificar
+Tras el reinicio: {'servicio': 'historial', 'estado': 'operativo', 'mongodb': 'disponible', 'datalake': '/datalake/eventos_p4', 'pendientes_en_buffer': 0, 'evento_id_conocidos': 20, 'sin_enriquecer': 0, 'aceptados': 0, 'duplicados': 0, 'archivos': 1, 'eventos_publicados': 20, 'ultimo_volcado': '2026-11-23T21:46:48.054892+00:00', 'errores_volcado': 0}
+OK:    los 20 eventos recuperados del WAL estan en Parquet, cada uno una vez (20 filas, 0.1 s tras el reinicio)
+OK:    reenviar los 20 despues del reinicio -> 'duplicado'
+OK:    tras el reenvio siguen 20 filas (no se duplico nada)
+OK:    no quedan archivos temporales
+
+RESULTADO: REINICIO CON BUFFER SUPERADA
+
+== Limpieza

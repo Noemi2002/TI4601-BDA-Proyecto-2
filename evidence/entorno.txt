@@ -1,0 +1,26 @@
+Mon Nov 23 02:57:09 PM CST 2026
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           48 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  8
+On-line CPU(s) list:                     0-7
+Vendor ID:                               AuthenticAMD
+Model name:                              AMD Ryzen 7 4700U with Radeon Graphics
+CPU family:                              23
+Model:                                   96
+Thread(s) per core:                      1
+Core(s) per socket:                      8
+Socket(s):                               1
+Stepping:                                1
+Microcode version:                       0x860010d
+Frequency boost:                         enabled
+CPU(s) scaling MHz:                      156%
+CPU max MHz:                             2000.0000
+CPU min MHz:                             1400.0000
+BogoMIPS:                                3992.46
+               total        used        free      shared  buff/cache   available
+Mem:            18Gi        10Gi       2.3Gi       418Mi       7.1Gi       8.6Gi
+Swap:          4.0Gi       524Ki       4.0Gi
+ CPUs: 8
+ Total Memory: 18.9GiB

@@ -1,0 +1,14 @@
+=== ANTES DEL REINICIO ===
+2026-11-18T16:38:42-06:00
+appendonly
+yes
+appendfsync
+everysec
+
+=== REINICIO ===
+ Container proyecto2-valkey Restarting 
+ Container proyecto2-valkey Started 
+
+=== ESTADO ===
+NAME               IMAGE             COMMAND                  SERVICE   CREATED       STATUS                                     PORTS
+proyecto2-valkey   valkey/valkey:8   "tini -- docker-entr…"   valkey    3 hours ago   Up Less than a second (health: starting)   6379/tcp

@@ -1,0 +1,73 @@
+
+REF=2026-11-23 23:58:45  fuente=/datalake/eventos  executors=2  paralelismo=4
+
+=== Q3: Duracion media y percentil 95 por modalidad y tipo de tarea.
+    tiempos (s): [3.56]
+== Physical Plan ==
+AdaptiveSparkPlan (9)
++- Sort (8)
+   +- Exchange (7)
+      +- ObjectHashAggregate (6)
+         +- Exchange (5)
+            +- ObjectHashAggregate (4)
+               +- Project (3)
+                  +- Filter (2)
+                     +- Scan parquet  (1)
+
+
+(1) Scan parquet 
+Output [5]: [modalidad#161, tipo_tarea#162, estado_nuevo#167, duracion_seg#169, mes#172]
+Batched: true
+Location: InMemoryFileIndex [file:/datalake/eventos]
+PushedFilters: [IsNotNull(estado_nuevo), EqualTo(estado_nuevo,anotada), IsNotNull(duracion_seg)]
+ReadSchema: struct<modalidad:string,tipo_tarea:string,estado_nuevo:string,duracion_seg:int>
+
+(2) Filter
+Input [5]: [modalidad#161, tipo_tarea#162, estado_nuevo#167, duracion_seg#169, mes#172]
+Condition : ((isnotnull(estado_nuevo#167) AND (estado_nuevo#167 = anotada)) AND isnotnull(duracion_seg#169))
+
+(3) Project
+Output [3]: [modalidad#161, tipo_tarea#162, duracion_seg#169]
+Input [5]: [modalidad#161, tipo_tarea#162, estado_nuevo#167, duracion_seg#169, mes#172]
+
+(4) ObjectHashAggregate
+Input [3]: [modalidad#161, tipo_tarea#162, duracion_seg#169]
+Keys [2]: [modalidad#161, tipo_tarea#162]
+Functions [3]: [partial_count(1), partial_avg(duracion_seg#169), partial_percentile(duracion_seg#169, 0.95, 1, 0, 0, false)]
+Aggregate Attributes [4]: [count#223L, sum#224, count#225L, buf#226]
+Results [6]: [modalidad#161, tipo_tarea#162, count#227L, sum#228, count#229L, buf#230]
+
+(5) Exchange
+Input [6]: [modalidad#161, tipo_tarea#162, count#227L, sum#228, count#229L, buf#230]
+Arguments: hashpartitioning(modalidad#161, tipo_tarea#162, 200), ENSURE_REQUIREMENTS, [plan_id=157]
+
+(6) ObjectHashAggregate
+Input [6]: [modalidad#161, tipo_tarea#162, count#227L, sum#228, count#229L, buf#230]
+Keys [2]: [modalidad#161, tipo_tarea#162]
+Functions [3]: [count(1), avg(duracion_seg#169), percentile(duracion_seg#169, 0.95, 1, 0, 0, false)]
+Aggregate Attributes [3]: [count(1)#212L, avg(duracion_seg#169)#214, percentile(duracion_seg#169, 0.95, 1, 0, 0, false)#217]
+Results [5]: [modalidad#161, tipo_tarea#162, count(1)#212L AS n#213L, round(avg(duracion_seg#169)#214, 2) AS media_seg#215, round(percentile(duracion_seg#169, 0.95, 1, 0, 0, false)#217, 2) AS p95_seg#216]
+
+(7) Exchange
+Input [5]: [modalidad#161, tipo_tarea#162, n#213L, media_seg#215, p95_seg#216]
+Arguments: rangepartitioning(modalidad#161 ASC NULLS FIRST, tipo_tarea#162 ASC NULLS FIRST, 200), ENSURE_REQUIREMENTS, [plan_id=160]
+
+(8) Sort
+Input [5]: [modalidad#161, tipo_tarea#162, n#213L, media_seg#215, p95_seg#216]
+Arguments: [modalidad#161 ASC NULLS FIRST, tipo_tarea#162 ASC NULLS FIRST], true, 0
+
+(9) AdaptiveSparkPlan
+Output [5]: [modalidad#161, tipo_tarea#162, n#213L, media_seg#215, p95_seg#216]
+Arguments: isFinalPlan=false
+
+
++---------+-------------------+-----+---------+-------+
+|modalidad|tipo_tarea         |n    |media_seg|p95_seg|
++---------+-------------------+-----+---------+-------+
+|imagen   |deteccion_objetos  |60253|250.67   |504.0  |
+|lidar    |deteccion_3d       |40020|1124.41  |2249.0 |
+|texto    |clasificacion_texto|60427|112.65   |227.0  |
+|video    |seguimiento        |39889|557.39   |1119.0 |
++---------+-------------------+-----+---------+-------+
+
+RESUMEN_TIEMPOS_JSON {"executors": 2, "ref": "2026-11-23 23:58:45", "tiempos_s": {"q3": [3.56]}}

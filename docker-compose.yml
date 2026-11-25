@@ -1,0 +1,225 @@
+
+name: ti4601-proyecto2
+
+services:
+
+  # nodo 1
+  mongo-1:
+    image: mongo:8.0.4
+    container_name: proyecto2-mongo-1
+    hostname: mongo-1
+
+    command:
+      - mongod
+      - --replSet
+      - rs-plataforma
+      - --bind_ip_all
+      - --wiredTigerCacheSizeGB
+      - "0.25"
+
+    volumes:
+      - mongo1_data:/data/db
+
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+    networks:
+      - plataforma-net
+
+
+
+  # nodo 2
+  mongo-2:
+    image: mongo:8.0.4
+    container_name: proyecto2-mongo-2
+    hostname: mongo-2
+
+    command:
+      - mongod
+      - --replSet
+      - rs-plataforma
+      - --bind_ip_all
+      - --wiredTigerCacheSizeGB
+      - "0.25"
+
+    volumes:
+      - mongo2_data:/data/db
+
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+    networks:
+      - plataforma-net
+
+
+  # nodo 3
+  mongo-3:
+    image: mongo:8.0.4
+    container_name: proyecto2-mongo-3
+    hostname: mongo-3
+
+    command:
+      - mongod
+      - --replSet
+      - rs-plataforma
+      - --bind_ip_all
+      - --wiredTigerCacheSizeGB
+      - "0.25"
+
+    volumes:
+      - mongo3_data:/data/db
+
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+    networks:
+      - plataforma-net
+
+  valkey:
+    image: valkey/valkey:8
+    container_name: proyecto2-valkey
+    command:
+      - valkey-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    volumes:
+      - valkey_data:/data
+    networks:
+      - plataforma-net
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+
+  carga:
+    build:
+      context: ./dataset
+    profiles: ["herramientas"]
+    working_dir: /app
+    environment:
+      MONGO_URI: mongodb://mongo-1:27017,mongo-2:27017,mongo-3:27017/?replicaSet=rs-plataforma
+    volumes:
+      - .:/app
+    networks:
+      - plataforma-net
+  
+  registro:
+    build:
+      context: ./servicios/registro
+    container_name: proyecto2-registro
+
+    environment:
+      MONGO_URI: mongodb://mongo-1:27017,mongo-2:27017,mongo-3:27017/?replicaSet=rs-plataforma
+
+    depends_on:
+      mongo-1:
+        condition: service_healthy
+      mongo-2:
+        condition: service_healthy
+      mongo-3:
+        condition: service_healthy
+
+    networks:
+      - plataforma-net
+
+  sesion:
+    build:
+      context: ./servicios/sesion
+    container_name: proyecto2-sesion
+    environment:
+      VALKEY_URL: redis://valkey:6379/0
+      LOCK_TTL_MS: "120000"
+    depends_on:
+      valkey:
+        condition: service_healthy
+    networks:
+      - plataforma-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8002/salud', timeout=2).read()"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+
+  gateway:
+    build:
+      context: ./servicios/gateway
+    container_name: proyecto2-gateway
+
+    environment:
+      REGISTRO_URL: http://registro:8001
+      SESION_URL: http://sesion:8002
+      HISTORIAL_URL: http://historial:8003
+      ANALITICA_URL: http://analitica:8004
+      VALKEY_URL: redis://valkey:6379/0
+      SALUD_STREAM_MAXLEN: "200"
+
+    depends_on:
+      - registro
+      - sesion
+
+    ports:
+      - "8000:8000"
+
+    networks:
+      - plataforma-net
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/salud', timeout=3).read()"
+        ]
+      interval: 5s
+      timeout: 4s
+      retries: 10
+
+
+  simulador:
+    build:
+      context: ./simulador
+    container_name: proyecto2-simulador
+
+    environment:
+      GATEWAY_URL: http://gateway:8000
+
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+    networks:
+      - plataforma-net
+
+    profiles:
+      - pruebas
+
+volumes:
+  mongo1_data:
+  mongo2_data:
+  mongo3_data:
+  valkey_data:
+
+networks:
+  plataforma-net:
+    driver: bridge

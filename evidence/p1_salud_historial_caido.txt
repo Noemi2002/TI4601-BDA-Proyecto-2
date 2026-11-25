@@ -1,0 +1,154 @@
+=== P1 - HISTORIAL NO DISPONIBLE ===
+2026-11-24T22:57:28-06:00
+
+=== /salud ===
+{
+    "servicio": "gateway",
+    "estado": "degradado",
+    "capas": {
+        "registro": {
+            "estado": "disponible",
+            "detalle": {
+                "servicio": "registro",
+                "estado": "operativo",
+                "mongodb": "disponible"
+            }
+        },
+        "sesion": {
+            "estado": "disponible",
+            "detalle": {
+                "servicio": "sesion",
+                "estado": "operativo",
+                "valkey": "disponible",
+                "persistencia": {
+                    "appendonly": "yes",
+                    "appendfsync": "everysec"
+                }
+            }
+        },
+        "historial": {
+            "estado": "no_disponible"
+        },
+        "analitica": {
+            "estado": "disponible",
+            "detalle": {
+                "servicio": "analitica",
+                "estado": "operativo",
+                "spark_master": "spark://spark-master:7077",
+                "spark_master_alcanzable": true,
+                "datalake": "/datalake/eventos",
+                "datalake_legible": true,
+                "sesion_spark_activa": false
+            }
+        }
+    },
+    "mensajeria_salud": {
+        "estado": "disponible",
+        "snapshot": "salud:capas",
+        "mensajes": "salud:mensajes"
+    }
+}
+
+=== SNAPSHOT VALKEY ===
+registro
+{"capa": "registro", "estado": "disponible", "actualizado_en": "2026-11-25T04:57:28.315049+00:00"}
+sesion
+{"capa": "sesion", "estado": "disponible", "actualizado_en": "2026-11-25T04:57:28.315049+00:00"}
+historial
+{"capa": "historial", "estado": "no_disponible", "actualizado_en": "2026-11-25T04:57:28.315049+00:00"}
+analitica
+{"capa": "analitica", "estado": "disponible", "actualizado_en": "2026-11-25T04:57:28.315049+00:00"}
+gateway
+{"capa": "gateway", "estado": "degradado", "actualizado_en": "2026-11-25T04:57:28.315049+00:00"}
+
+=== MENSAJES VALKEY ===
+1795582373319-0
+capa
+registro
+estado_anterior
+sin_registro
+estado_nuevo
+disponible
+timestamp
+2026-11-25T04:52:53.315156+00:00
+1795582373319-1
+capa
+sesion
+estado_anterior
+sin_registro
+estado_nuevo
+disponible
+timestamp
+2026-11-25T04:52:53.315156+00:00
+1795582373319-2
+capa
+historial
+estado_anterior
+sin_registro
+estado_nuevo
+no_disponible
+timestamp
+2026-11-25T04:52:53.315156+00:00
+1795582373319-3
+capa
+analitica
+estado_anterior
+sin_registro
+estado_nuevo
+no_disponible
+timestamp
+2026-11-25T04:52:53.315156+00:00
+1795582373319-4
+capa
+gateway
+estado_anterior
+sin_registro
+estado_nuevo
+degradado
+timestamp
+2026-11-25T04:52:53.315156+00:00
+1795582497040-0
+capa
+historial
+estado_anterior
+no_disponible
+estado_nuevo
+disponible
+timestamp
+2026-11-25T04:54:57.037678+00:00
+1795582497040-1
+capa
+analitica
+estado_anterior
+no_disponible
+estado_nuevo
+disponible
+timestamp
+2026-11-25T04:54:57.037678+00:00
+1795582497040-2
+capa
+gateway
+estado_anterior
+degradado
+estado_nuevo
+operativo
+timestamp
+2026-11-25T04:54:57.037678+00:00
+1795582630253-0
+capa
+historial
+estado_anterior
+disponible
+estado_nuevo
+no_disponible
+timestamp
+2026-11-25T04:57:10.252627+00:00
+1795582630253-1
+capa
+gateway
+estado_anterior
+operativo
+estado_nuevo
+degradado
+timestamp
+2026-11-25T04:57:10.252627+00:00

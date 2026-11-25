@@ -1,0 +1,31 @@
+Registro http://registro:8001  datalake /datalake/eventos
+Proyecto b3f242ed-755a-5b7a-9a41-ab68d3aa50fd  anotador ca879ebc-a8b2-5af7-adc4-afb712a5ffa0  revisor b3a1c987-0ba9-5bc9-958e-af6ffe8daca3
+
+OK:    POST /tareas/siguiente -> 200
+Tarea 0bc0e548-2b27-5651-b1ff-4e8ad43044b0  modalidad imagen  version inicial 0
+OK:    MongoDB: estado 'abierta' tras la toma
+OK:    POST enviar -> 200
+OK:    segundo envio de la misma tarea -> 409 (se espera 409)
+OK:    MongoDB: sigue 'anotada' tras el 409
+OK:    iniciar revision -> 200 en_revision
+OK:    rechazar -> HTTP 200
+
+MongoDB -> estado=disponible version=4 asignacion=None
+OK:    MongoDB: la tarea rechazada vuelve a 'disponible'
+OK:    MongoDB: la asignacion queda vacia
+OK:    MongoDB: version 0 -> 4 (+4 transiciones)
+OK:    la respuesta distingue estado Mongo 'disponible' y evento 'rechazada'
+
+Esperando el micro-lote del Historial...
+Parquet -> ['abierta', 'anotada', 'en_revision', 'rechazada']
+OK:    Parquet: abierta -> anotada -> en_revision -> rechazada
+OK:    Parquet: ninguna fila 'disponible' (el rechazo queda 'rechazada')
+OK:    Parquet: la fila 'rechazada' trae codigo_motivo y revisor
+OK:    Parquet: enriquecimiento correcto (cliente_id, sla_seg)
+OK:    Parquet: cada evento una sola vez
+OK:    Parquet: version del evento = version en MongoDB
+
+Segundos entre el HTTP 200 del rechazo y la fila visible en Parquet: 2.9
+RESUMEN_E2E_JSON {"fecha": "2026-11-23T21:46:00.680076+00:00", "tarea_id": "0bc0e548-2b27-5651-b1ff-4e8ad43044b0", "estado_mongodb": "disponible", "estados_parquet": ["abierta", "anotada", "en_revision", "rechazada"], "segundos_http200_a_parquet": 2.9}
+
+RESULTADO: E2E RECHAZO SUPERADA

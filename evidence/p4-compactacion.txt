@@ -1,0 +1,14 @@
+OK:    30 archivos pequenos tras 30 micro-lotes
+Antes: 31 archivos, 155 filas, 150 distintas, lectura 151 ms
+mes=2026-11: 31 -> 1 archivos, 155 -> 150 filas (5 duplicados eliminados)
+RESUMEN_COMPACTACION_JSON {"dry_run": false, "segundos": 0.139, "particiones": [{"particion": "mes=2026-11", "archivos_antes": 31, "archivos_despues": 1, "filas_antes": 155, "filas_despues": 150, "duplicados_eliminados": 5, "compactada": true}]}
+OK:    compactar.py termino sin errores
+Despues: 1 archivos, 150 filas, 150 distintas, lectura 4 ms
+OK:    queda 1 solo archivo en la particion
+OK:    150 filas, cada evento una sola vez (se elimino el duplicado)
+OK:    no se perdio ningun evento
+OK:    no quedan archivos temporales
+OK:    el Historial sigue deduplicando
+OK:    un evento nuevo despues de compactar genera un archivo evt-* aparte
+
+RESULTADO: COMPACTACION SUPERADA

@@ -1,0 +1,92 @@
+{
+  "10": {
+    "usuarios": 10,
+    "corridas": 3,
+    "envios_exitosos_total": 30,
+    "sin_tarea_total": 0,
+    "envios_por_minuto_promedio": 6.63,
+    "endpoints": {
+      "siguiente": {
+        "p50_ms_promedio": 292.87,
+        "p95_ms_promedio": 300.912,
+        "p99_ms_promedio": 300.912,
+        "errores_total": 0,
+        "muestras_total": 30
+      },
+      "borrador": {
+        "p50_ms_promedio": 148.677,
+        "p95_ms_promedio": 219.112,
+        "p99_ms_promedio": 266.443,
+        "errores_total": 0,
+        "muestras_total": 1320
+      },
+      "enviar": {
+        "p50_ms_promedio": 191.543,
+        "p95_ms_promedio": 202.947,
+        "p99_ms_promedio": 202.947,
+        "errores_total": 0,
+        "muestras_total": 30
+      }
+    }
+  },
+  "40": {
+    "usuarios": 40,
+    "corridas": 3,
+    "envios_exitosos_total": 120,
+    "sin_tarea_total": 0,
+    "envios_por_minuto_promedio": 26.147,
+    "endpoints": {
+      "siguiente": {
+        "p50_ms_promedio": 991.947,
+        "p95_ms_promedio": 1038.764,
+        "p99_ms_promedio": 1051.401,
+        "errores_total": 0,
+        "muestras_total": 120
+      },
+      "borrador": {
+        "p50_ms_promedio": 484.972,
+        "p95_ms_promedio": 692.192,
+        "p99_ms_promedio": 772.597,
+        "errores_total": 0,
+        "muestras_total": 5280
+      },
+      "enviar": {
+        "p50_ms_promedio": 705.636,
+        "p95_ms_promedio": 749.484,
+        "p99_ms_promedio": 759.478,
+        "errores_total": 0,
+        "muestras_total": 120
+      }
+    }
+  },
+  "100": {
+    "usuarios": 100,
+    "corridas": 3,
+    "envios_exitosos_total": 293,
+    "sin_tarea_total": 0,
+    "envios_por_minuto_promedio": 63.708,
+    "endpoints": {
+      "siguiente": {
+        "p50_ms_promedio": 1845.563,
+        "p95_ms_promedio": 2422.906,
+        "p99_ms_promedio": 2483.203,
+        "errores_total": 7,
+        "muestras_total": 300
+      },
+      "borrador": {
+        "p50_ms_promedio": 660.879,
+        "p95_ms_promedio": 1309.929,
+        "p99_ms_promedio": 1491.501,
+        "errores_total": 0,
+        "muestras_total": 12738
+      },
+      "enviar": {
+        "p50_ms_promedio": 901.515,
+        "p95_ms_promedio": 1241.76,
+        "p99_ms_promedio": 1272.041,
+        "errores_total": 0,
+        "muestras_total": 293
+      }
+    }
+  }
+}

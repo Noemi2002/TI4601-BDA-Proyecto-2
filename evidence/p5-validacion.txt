@@ -1,0 +1,8 @@
+801460 eventos leidos de datalake/eventos
+OK   Q1: 361 filas pandas, 361 Spark, filas sin pareja=0, mayor diferencia relativa a la tolerancia=0.000
+OK   Q2: 270 filas pandas, 270 Spark, filas sin pareja=0, mayor diferencia relativa a la tolerancia=1.000
+OK   Q3: 4 filas pandas, 4 Spark, filas sin pareja=0, mayor diferencia relativa a la tolerancia=0.000
+OK   Q4: 120 filas pandas, 120 Spark, filas sin pareja=0, mayor diferencia relativa a la tolerancia=0.000
+OK   Q5: 60 filas pandas, 60 Spark, filas sin pareja=0, mayor diferencia relativa a la tolerancia=0.000
+
+RESULTADO GLOBAL: TODAS COINCIDEN

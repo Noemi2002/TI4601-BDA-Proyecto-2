@@ -1,0 +1,60 @@
+=== P1 - SALUD DEGRADADA FINAL ===
+2026-11-24T23:06:41-06:00
+{
+    "servicio": "gateway",
+    "estado": "degradado",
+    "capas": {
+        "registro": {
+            "estado": "disponible",
+            "detalle": {
+                "servicio": "registro",
+                "estado": "operativo",
+                "mongodb": "disponible"
+            }
+        },
+        "sesion": {
+            "estado": "disponible",
+            "detalle": {
+                "servicio": "sesion",
+                "estado": "operativo",
+                "valkey": "disponible",
+                "persistencia": {
+                    "appendonly": "yes",
+                    "appendfsync": "everysec"
+                }
+            }
+        },
+        "historial": {
+            "estado": "no_disponible"
+        },
+        "analitica": {
+            "estado": "disponible",
+            "detalle": {
+                "servicio": "analitica",
+                "estado": "operativo",
+                "spark_master": "spark://spark-master:7077",
+                "spark_master_alcanzable": true,
+                "datalake": "/datalake/eventos",
+                "datalake_legible": true,
+                "sesion_spark_activa": false
+            }
+        }
+    },
+    "mensajeria_salud": {
+        "estado": "disponible",
+        "snapshot": "salud:capas",
+        "mensajes": "salud:mensajes"
+    }
+}
+
+=== SNAPSHOT VALKEY ===
+registro
+{"capa": "registro", "estado": "disponible", "actualizado_en": "2026-11-25T05:06:41.605588+00:00"}
+sesion
+{"capa": "sesion", "estado": "disponible", "actualizado_en": "2026-11-25T05:06:41.605588+00:00"}
+historial
+{"capa": "historial", "estado": "no_disponible", "actualizado_en": "2026-11-25T05:06:41.605588+00:00"}
+analitica
+{"capa": "analitica", "estado": "disponible", "actualizado_en": "2026-11-25T05:06:41.605588+00:00"}
+gateway
+{"capa": "gateway", "estado": "degradado", "actualizado_en": "2026-11-25T05:06:41.605588+00:00"}

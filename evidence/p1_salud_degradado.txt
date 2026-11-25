@@ -1,0 +1,13 @@
+=== P1 - ESTADO DEGRADADO ===
+2026-11-18T16:45:06-06:00
+
+{"servicio":"gateway","estado":"degradado","capas":{"registro":{"estado":"disponible","detalle":{"servicio":"registro","estado":"operativo","mongodb":"disponible"}},"sesion":{"estado":"no_disponible"}}}
+HTTP_CODE=200
+
+NAME                 IMAGE                       COMMAND                  SERVICE    CREATED          STATUS                    PORTS
+proyecto2-gateway    ti4601-proyecto2-gateway    "uvicorn main:app --…"   gateway    15 minutes ago   Up 15 minutes (healthy)   0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+proyecto2-mongo-1    mongo:8.0.4                 "docker-entrypoint.s…"   mongo-1    2 hours ago      Up 2 hours (healthy)      27017/tcp
+proyecto2-mongo-2    mongo:8.0.4                 "docker-entrypoint.s…"   mongo-2    2 hours ago      Up 2 hours (healthy)      27017/tcp
+proyecto2-mongo-3    mongo:8.0.4                 "docker-entrypoint.s…"   mongo-3    2 hours ago      Up 2 hours (healthy)      27017/tcp
+proyecto2-registro   ti4601-proyecto2-registro   "uvicorn main:app --…"   registro   2 hours ago      Up 2 hours                
+proyecto2-valkey     valkey/valkey:8             "tini -- docker-entr…"   valkey     4 hours ago      Up 6 minutes (healthy)    6379/tcp

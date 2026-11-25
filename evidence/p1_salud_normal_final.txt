@@ -1,0 +1,79 @@
+=== P1 - SALUD NORMAL FINAL ===
+2026-11-24T23:06:19-06:00
+
+{
+    "servicio": "gateway",
+    "estado": "operativo",
+    "capas": {
+        "registro": {
+            "estado": "disponible",
+            "detalle": {
+                "servicio": "registro",
+                "estado": "operativo",
+                "mongodb": "disponible"
+            }
+        },
+        "sesion": {
+            "estado": "disponible",
+            "detalle": {
+                "servicio": "sesion",
+                "estado": "operativo",
+                "valkey": "disponible",
+                "persistencia": {
+                    "appendonly": "yes",
+                    "appendfsync": "everysec"
+                }
+            }
+        },
+        "historial": {
+            "estado": "disponible",
+            "detalle": {
+                "servicio": "historial",
+                "estado": "operativo",
+                "mongodb": "disponible",
+                "datalake": "/datalake/eventos",
+                "pendientes_en_buffer": 0,
+                "evento_id_conocidos": 1,
+                "sin_enriquecer": 0,
+                "aceptados": 1,
+                "duplicados": 0,
+                "archivos": 1,
+                "eventos_publicados": 1,
+                "ultimo_volcado": "2026-11-25T05:04:51.521955+00:00",
+                "errores_volcado": 0
+            }
+        },
+        "analitica": {
+            "estado": "disponible",
+            "detalle": {
+                "servicio": "analitica",
+                "estado": "operativo",
+                "spark_master": "spark://spark-master:7077",
+                "spark_master_alcanzable": true,
+                "datalake": "/datalake/eventos",
+                "datalake_legible": true,
+                "sesion_spark_activa": false
+            }
+        }
+    },
+    "mensajeria_salud": {
+        "estado": "disponible",
+        "snapshot": "salud:capas",
+        "mensajes": "salud:mensajes"
+    }
+}
+
+=== PUERTOS ===
+NAME                 IMAGE                       COMMAND                  SERVICE    CREATED              STATUS                        PORTS
+proyecto2-gateway    ti4601-proyecto2-gateway    "uvicorn main:app --…"   gateway    About a minute ago   Up About a minute (healthy)   0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+proyecto2-mongo-1    mongo:8.0.4                 "docker-entrypoint.s…"   mongo-1    6 days ago           Up 22 minutes (healthy)       27017/tcp
+proyecto2-mongo-2    mongo:8.0.4                 "docker-entrypoint.s…"   mongo-2    6 days ago           Up 22 minutes (healthy)       27017/tcp
+proyecto2-mongo-3    mongo:8.0.4                 "docker-entrypoint.s…"   mongo-3    6 days ago           Up 22 minutes (healthy)       27017/tcp
+proyecto2-registro   ti4601-proyecto2-registro   "uvicorn main:app --…"   registro   22 minutes ago       Up 22 minutes                 
+proyecto2-sesion     ti4601-proyecto2-sesion     "uvicorn main:app --…"   sesion     22 minutes ago       Up 22 minutes (healthy)       
+proyecto2-valkey     valkey/valkey:8             "tini -- docker-entr…"   valkey     6 days ago           Up 22 minutes (healthy)       6379/tcp
+NAME                       IMAGE                             COMMAND                  SERVICE          CREATED          STATUS          PORTS
+proyecto2-analitica        ti4601-bda-proyecto-2-analitica   "/opt/entrypoint.sh …"   analitica        11 minutes ago   Up 11 minutes   
+proyecto2-historial        ti4601-bda-proyecto-2-historial   "uvicorn main:app --…"   historial        11 minutes ago   Up 8 minutes    
+proyecto2-spark-master     apache/spark:3.5.3-python3        "/opt/entrypoint.sh …"   spark-master     11 minutes ago   Up 11 minutes   127.0.0.1:8080->8080/tcp
+proyecto2-spark-worker-1   apache/spark:3.5.3-python3        "/opt/entrypoint.sh …"   spark-worker-1   11 minutes ago   Up 11 minutes   

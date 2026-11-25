@@ -1,0 +1,155 @@
+{
+  "10": {
+    "proyecto2-gateway": {
+      "muestras": 93,
+      "cpu_promedio_pct": 10.953,
+      "cpu_max_pct": 34.59,
+      "memoria_promedio_mib": 98.071,
+      "memoria_max_mib": 107.6
+    },
+    "proyecto2-registro": {
+      "muestras": 93,
+      "cpu_promedio_pct": 1.84,
+      "cpu_max_pct": 4.62,
+      "memoria_promedio_mib": 38.36,
+      "memoria_max_mib": 39.25
+    },
+    "proyecto2-sesion": {
+      "muestras": 93,
+      "cpu_promedio_pct": 4.049,
+      "cpu_max_pct": 20.76,
+      "memoria_promedio_mib": 42.842,
+      "memoria_max_mib": 53.44
+    },
+    "proyecto2-valkey": {
+      "muestras": 93,
+      "cpu_promedio_pct": 1.727,
+      "cpu_max_pct": 6.87,
+      "memoria_promedio_mib": 5.272,
+      "memoria_max_mib": 8.852
+    },
+    "proyecto2-mongo-1": {
+      "muestras": 93,
+      "cpu_promedio_pct": 24.825,
+      "cpu_max_pct": 78.87,
+      "memoria_promedio_mib": 98.483,
+      "memoria_max_mib": 202.8
+    },
+    "proyecto2-mongo-2": {
+      "muestras": 93,
+      "cpu_promedio_pct": 21.942,
+      "cpu_max_pct": 78.65,
+      "memoria_promedio_mib": 87.206,
+      "memoria_max_mib": 190.8
+    },
+    "proyecto2-mongo-3": {
+      "muestras": 93,
+      "cpu_promedio_pct": 25.589,
+      "cpu_max_pct": 81.65,
+      "memoria_promedio_mib": 102.547,
+      "memoria_max_mib": 203.4
+    }
+  },
+  "40": {
+    "proyecto2-gateway": {
+      "muestras": 93,
+      "cpu_promedio_pct": 36.349,
+      "cpu_max_pct": 104.64,
+      "memoria_promedio_mib": 154.247,
+      "memoria_max_mib": 170.3
+    },
+    "proyecto2-registro": {
+      "muestras": 93,
+      "cpu_promedio_pct": 5.266,
+      "cpu_max_pct": 13.24,
+      "memoria_promedio_mib": 39.612,
+      "memoria_max_mib": 41.1
+    },
+    "proyecto2-sesion": {
+      "muestras": 93,
+      "cpu_promedio_pct": 6.924,
+      "cpu_max_pct": 30.09,
+      "memoria_promedio_mib": 43.978,
+      "memoria_max_mib": 56.14
+    },
+    "proyecto2-valkey": {
+      "muestras": 93,
+      "cpu_promedio_pct": 1.916,
+      "cpu_max_pct": 7.6,
+      "memoria_promedio_mib": 5.131,
+      "memoria_max_mib": 8.816
+    },
+    "proyecto2-mongo-1": {
+      "muestras": 93,
+      "cpu_promedio_pct": 25.443,
+      "cpu_max_pct": 97.61,
+      "memoria_promedio_mib": 108.243,
+      "memoria_max_mib": 209.9
+    },
+    "proyecto2-mongo-2": {
+      "muestras": 93,
+      "cpu_promedio_pct": 22.812,
+      "cpu_max_pct": 83.37,
+      "memoria_promedio_mib": 92.458,
+      "memoria_max_mib": 197.1
+    },
+    "proyecto2-mongo-3": {
+      "muestras": 93,
+      "cpu_promedio_pct": 22.575,
+      "cpu_max_pct": 82.32,
+      "memoria_promedio_mib": 103.85,
+      "memoria_max_mib": 205.8
+    }
+  },
+  "100": {
+    "proyecto2-gateway": {
+      "muestras": 96,
+      "cpu_promedio_pct": 78.545,
+      "cpu_max_pct": 117.05,
+      "memoria_promedio_mib": 209.603,
+      "memoria_max_mib": 233.1
+    },
+    "proyecto2-registro": {
+      "muestras": 96,
+      "cpu_promedio_pct": 14.474,
+      "cpu_max_pct": 30.06,
+      "memoria_promedio_mib": 40.436,
+      "memoria_max_mib": 42.01
+    },
+    "proyecto2-sesion": {
+      "muestras": 96,
+      "cpu_promedio_pct": 13.585,
+      "cpu_max_pct": 40.01,
+      "memoria_promedio_mib": 45.889,
+      "memoria_max_mib": 51.61
+    },
+    "proyecto2-valkey": {
+      "muestras": 96,
+      "cpu_promedio_pct": 2.483,
+      "cpu_max_pct": 9.35,
+      "memoria_promedio_mib": 4.925,
+      "memoria_max_mib": 6.086
+    },
+    "proyecto2-mongo-1": {
+      "muestras": 96,
+      "cpu_promedio_pct": 36.105,
+      "cpu_max_pct": 94.11,
+      "memoria_promedio_mib": 120.518,
+      "memoria_max_mib": 226.4
+    },
+    "proyecto2-mongo-2": {
+      "muestras": 96,
+      "cpu_promedio_pct": 31.395,
+      "cpu_max_pct": 93.99,
+      "memoria_promedio_mib": 104.457,
+      "memoria_max_mib": 212.7
+    },
+    "proyecto2-mongo-3": {
+      "muestras": 96,
+      "cpu_promedio_pct": 31.052,
+      "cpu_max_pct": 100.07,
+      "memoria_promedio_mib": 118.154,
+      "memoria_max_mib": 218.8
+    }
+  }
+}

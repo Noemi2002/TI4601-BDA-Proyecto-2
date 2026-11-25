@@ -1,0 +1,24 @@
+=== P1 - EXPOSICION DE PUERTOS ===
+2026-11-18T16:47:18-06:00
+
+
+--- proyecto2-gateway ---
+{"8000/tcp":[{"HostIp":"","HostPort":"8000"}]}
+
+--- proyecto2-registro ---
+{}
+
+--- proyecto2-sesion ---
+{}
+
+--- proyecto2-valkey ---
+{}
+
+--- proyecto2-mongo-1 ---
+{}
+
+--- proyecto2-mongo-2 ---
+{}
+
+--- proyecto2-mongo-3 ---
+{}
