@@ -1,0 +1,30 @@
+Gateway: http://localhost:8000
+
+/salud -> 200 {"servicio": "gateway", "estado": "operativo", "capas": {"capas_analiticas": {"historial": {"estado": "disponible", "detalle": {"servicio": "historial", "estado": "operativo", "mongodb": "disponible", "datalake": "/datalake/eventos", "pendientes_en_buffer": 0, "evento_id_conocidos": 801898, "sin_enr
+
+consulta HTTP  filas  spark_s  arranque_s total_s 
+q1       200   362    9.539    0.358      9.935
+OK:    q1: 362 filas por la API y 362 en el CSV de spark-submit
+q1       200   362    0.587    0.0        0.615
+q1       200   362    0.533    0.0        0.561
+q2       200   390    1.534    0.0        1.566
+OK:    q2: 390 filas por la API y 390 en el CSV de spark-submit
+q2       200   390    0.812    0.0        0.847
+q2       200   390    0.763    0.0        0.792
+q3       200   4      1.623    0.0        1.637
+OK:    q3: 4 filas por la API y 4 en el CSV de spark-submit
+q3       200   4      0.686    0.0        0.708
+q3       200   4      0.729    0.0        0.742
+q4       200   120    0.946    0.0        0.974
+OK:    q4: 120 filas por la API y 120 en el CSV de spark-submit
+q4       200   120    0.667    0.0        0.686
+q4       200   120    0.587    0.0        0.604
+q5       200   60     1.342    0.0        1.356
+OK:    q5: 60 filas por la API y 60 en el CSV de spark-submit
+q5       200   60     1.041    0.0        1.055
+q5       200   60     0.901    0.0        0.914
+OK:    consulta inexistente -> 404 (se espera 404)
+OK:    conjunto ampliado no disponible -> 404 (se espera 404)
+OK:    conjunto invalido -> 422 (se espera 422)
+
+RESULTADO: API ANALITICA SUPERADA

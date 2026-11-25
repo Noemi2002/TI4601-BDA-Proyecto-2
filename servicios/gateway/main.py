@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 
+
 REGISTRO_URL = os.getenv(
     "REGISTRO_URL",
     "http://registro:8001",
@@ -19,6 +20,10 @@ SESION_URL = os.getenv(
 
 TIMEOUT = 5.0
 
+HISTORIAL_URL = os.getenv("HISTORIAL_URL", "http://historial:8003")
+ANALITICA_URL = os.getenv("ANALITICA_URL", "http://analitica:8004")
+# La primera consulta arranca Spark (decenas de segundos), por eso el timeout es largo.
+TIMEOUT_ANALITICA = float(os.getenv("ANALITICA_TIMEOUT", "300"))
 
 app = FastAPI(
     title="Gateway Plataforma de Anotación",
@@ -662,6 +667,39 @@ async def recuperar_sesion_publica(
             **recuperacion,
         }
 
+@app.get("/analitica/{consulta}")
+async def analitica(
+    consulta: str,
+    conjunto: str = "principal",
+    ref: str | None = None,
+    limite: int = 1000,
+):
+    params = {"conjunto": conjunto, "limite": limite}
+    if ref is not None:
+        params["ref"] = ref
+
+    async with httpx.AsyncClient() as cliente:
+        try:
+            respuesta = await cliente.get(
+                f"{ANALITICA_URL}/consultas/{consulta}",
+                params=params,
+                timeout=TIMEOUT_ANALITICA,
+            )
+        except httpx.HTTPError:
+            raise HTTPException(
+                status_code=503,
+                detail="Servicio de analítica no disponible",
+            )
+
+        try:
+            contenido = respuesta.json()
+        except ValueError:
+            contenido = {"detail": respuesta.text}
+
+        return JSONResponse(
+            status_code=respuesta.status_code,
+            content=contenido,
+        )
 
 # =========================================================
 # AUXILIARES
@@ -833,6 +871,9 @@ async def salud():
             "sesion",
             SESION_URL,
         )
+        
+        historial = await consultar_salud(cliente, "historial", HISTORIAL_URL)
+        analitica_capa = await consultar_salud(cliente, "analitica", ANALITICA_URL)
 
     disponibles = sum(
         capa["estado"] == "disponible"
@@ -852,6 +893,10 @@ async def salud():
         "servicio": "gateway",
         "estado": estado,
         "capas": {
+                "capas_analiticas": {
+                    "historial": historial,
+                    "analitica": analitica_capa,
+        },
             "registro": registro,
             "sesion": sesion,
         },

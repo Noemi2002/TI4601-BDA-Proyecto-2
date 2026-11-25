@@ -1,0 +1,29 @@
+Fecha: 2026-11-25T01:44:32Z
+Objetivo: ningun evento confirmado por MongoDB se pierde aunque el Historial y el Registro se reinicien.
+
+== 1. Detener el Historial
+historial detenido a las 01:44:33Z
+
+== 2. Transiciones reales por el Registro con el Historial caido
+ Container ti4601-proyecto2-carga-run-117368eda487 Creating 
+ Container ti4601-proyecto2-carga-run-117368eda487 Created 
+Transiciones confirmadas por MongoDB (HTTP 200) con el Historial caido. Tarea 0bc0e548-2b27-5651-b1ff-4e8ad43044b0
+Outbox: 4 eventos guardados ['abierta', 'anotada', 'en_revision', 'rechazada']; intentos de entrega: [3, 0, 0, 0]
+MongoDB: estado=disponible
+TAREA_ID=0bc0e548-2b27-5651-b1ff-4e8ad43044b0
+OK:    los 4 eventos estan en el outbox, ninguno se perdio
+
+== 3. Reiniciar el Registro (los eventos pendientes viven en MongoDB, no en memoria)
+registro de nuevo en linea tras ~2 s
+
+== 4. Levantar el Historial y verificar la entrega
+historial de nuevo en linea tras ~5 s (01:44:44Z)
+Parquet: ['abierta', 'anotada', 'en_revision', 'rechazada'] (0.4 s despues de reiniciar el Historial)
+OK:    el outbox quedo vacio (todo fue entregado)
+OK:    Parquet tiene los 4 eventos en orden
+OK:    cada evento aparece una sola vez
+OK:    la fila rechazada conserva su codigo de motivo
+OK:    MongoDB: la tarea sigue 'disponible'
+Segundos desde que el Historial volvio hasta la entrega completa: 0.4
+
+RESULTADO: ENTREGA DURABLE SUPERADA

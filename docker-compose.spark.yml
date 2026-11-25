@@ -4,7 +4,7 @@ services:
     container_name: proyecto2-spark-master
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     ports:
-      - "8080:8080"   # UI del master
+      - "127.0.0.1:8080:8080"   # UI del master: solo localhost (interfaz de administracion)
     volumes:
       - ./datalake:/datalake
       - ./spark/jobs:/opt/spark/jobs
@@ -44,7 +44,7 @@ services:
       - plataforma-net
     profiles: ["dos-workers"]
 
-  # Servicio de Historial (receptor de POST /eventos)
+  # Servicio de Historial (receptor de POST /eventos). Sin puertos publicados.
   historial:
     build: ./servicios/historial
     container_name: proyecto2-historial
@@ -53,6 +53,24 @@ services:
       LAGO_DIR: /datalake/eventos
     volumes:
       - ./datalake:/datalake
+    networks:
+      - plataforma-net
+
+  # Servicio de Analitica (GET /consultas/{q1..q5}). Sin puertos publicados: solo el
+  # Gateway lo consulta. Lee el datalake en SOLO LECTURA y no tiene acceso a MongoDB.
+  # Su driver de Spark corre aqui; los executors se conectan de vuelta por 7078/7079.
+  analitica:
+    build: ./servicios/analitica
+    container_name: proyecto2-analitica
+    environment:
+      SPARK_MASTER: spark://spark-master:7077
+      SPARK_DRIVER_HOST: analitica
+      SPARK_CORES_MAX: "2"
+    depends_on:
+      - spark-master
+    volumes:
+      - ./datalake:/datalake:ro
+      - ./spark/jobs:/opt/spark/jobs:ro
     networks:
       - plataforma-net
 

@@ -58,7 +58,7 @@ TI4601-BDA-Proyecto-2/
 │   │   ├── revisiones.py
 │   │   ├── exportacion.py
 │   │   ├── comandos.py
-│   │   └── historial_cliente.py
+│   │   └── historial_cliente.py        # outbox durable hacia el Historial
 │   ├── sesion/
 │   │   ├── Dockerfile
 │   │   ├── requirements.txt
@@ -67,7 +67,12 @@ TI4601-BDA-Proyecto-2/
 │   │   ├── Dockerfile
 │   │   ├── requirements.txt
 │   │   └── main.py
-│   └── historial/
+│   ├── historial/
+│   │   ├── Dockerfile
+│   │   ├── requirements.txt
+│   │   ├── main.py
+│   │   └── compactar.py
+│   └── analitica/
 │       ├── Dockerfile
 │       ├── requirements.txt
 │       └── main.py
@@ -97,8 +102,15 @@ TI4601-BDA-Proyecto-2/
 │   ├── p8_escenarios.sh
 │   ├── p4_historial.py
 │   ├── e2e_rechazo.py
+│   ├── e2e_gateway_rechazo.py
 │   ├── p4_reinicio_buffer.py
-│   └── p4_reinicio_buffer.sh
+│   ├── p4_reinicio_buffer.sh
+│   ├── p4_entrega_durable.sh
+│   ├── p4_durable_transiciones.py
+│   ├── p4_durable_verificar.py
+│   ├── p4_compactacion.py
+│   ├── reconciliar_eventos.py
+│   └── p5_analitica_api.py
 ├── datalake/
 └── evidence/
 ```
@@ -111,7 +123,8 @@ TI4601-BDA-Proyecto-2/
 - `servicios/registro/`: estado operacional y persistencia MongoDB.
 - `servicios/sesion/`: locks, sesiones y borradores sobre Valkey.
 - `servicios/gateway/`: único punto de entrada HTTP público.
-- `servicios/historial/`: recepción de eventos y escritura del datalake Parquet.
+- `servicios/historial/`: recepción de eventos, escritura del datalake Parquet y compactación.
+- `servicios/analitica/`: API REST que ejecuta Q1–Q5 con Spark sobre el datalake (solo lectura).
 - `spark/jobs/`: generador del historial, consultas Q1–Q5 y su validación.
 - `datalake/`: archivos Parquet (`eventos/mes=AAAA-MM/`) y resultados de las consultas; se genera al ejecutar el generador.
 - `simulador/`: simulación funcional y generación de carga concurrente.
@@ -432,10 +445,12 @@ La conexión de PyMongo utiliza los tres miembros del replica set:
 mongodb://mongo-1:27017,mongo-2:27017,mongo-3:27017/?replicaSet=rs-plataforma
 ```
 
-El **Historial** (`historial:8003`, red interna) recibe del Registro un evento por cada transición confirmada por MongoDB y lo publica en el datalake Parquet (`datalake/eventos/mes=AAAA-MM/`). **Spark** lee únicamente esos archivos, en modo de solo lectura; no consulta MongoDB ni el Historial. Ambos se levantan con `docker-compose.spark.yml` (sección 18).
+El **Historial** (`historial:8003`, red interna) recibe del Registro un evento por cada transición confirmada por MongoDB y lo publica en el datalake Parquet (`datalake/eventos/mes=AAAA-MM/`). La **Analítica** (`analitica:8004`, red interna) ejecuta Q1–Q5 con **Spark**, que lee únicamente esos archivos, en modo de solo lectura (volumen montado `:ro`); no consulta MongoDB ni el Historial. El Gateway expone `GET /analitica/{q1..q5}`. Historial, Spark y Analítica se levantan con `docker-compose.spark.yml` (sección 18).
 
 ```text
-Registro --POST /eventos--> Historial --micro-lote--> datalake/eventos/mes=AAAA-MM/*.parquet <-- Spark (Q1-Q5)
+Registro --outbox (MongoDB)--POST /eventos--> Historial --micro-lote--> datalake/eventos/mes=AAAA-MM/*.parquet
+                                                                          ^
+Gateway --GET /analitica/{q}--> Analítica (driver Spark) --> Spark workers  | (solo lectura)
 ```
 
 ### 7. Servicio REST de registro
@@ -947,10 +962,10 @@ El Gateway, Registro, Sesión, Valkey y MongoDB se encuentran integrados para el
 | Locks, sesiones y borradores | Integrados y probados |
 | Renovación y vencimiento MongoDB/Valkey | Integrados y probados |
 | Recuperación de tareas vencidas | Integrada y probada |
-| Historial/Parquet | Integrado y probado (secciones 18 y 20) |
+| Historial/Parquet (entrega durable con outbox, micro-lotes, compactación) | Integrado y probado (secciones 18 y 20) |
 | Deduplicación histórica por `evento_id` | Completada en el Historial (sección 18) |
-| Analítica/Spark Q1–Q5 | Completada, validada y medida (secciones 19 y 20) |
-| `/analitica/{q1..q5}` en Gateway | Pendiente de conectar; las consultas se ejecutan con `spark-submit` (sección 19) |
+| Analítica/Spark Q1–Q5 (servicio REST) | Completada, validada y medida (secciones 19 y 20) |
+| `/analitica/{q1..q5}` en Gateway | Integrado (sección 19.5) |
 | Flujo distribuido completo con todos los componentes | Pendiente de validación final del equipo |
 
 #### 11.1. Comunicación con el Gateway
@@ -996,15 +1011,17 @@ Esta coordinación fue validada mediante las pruebas de interrupción, recuperac
 
 #### 11.3. Integración con Parquet e Historial
 
-El Registro genera el `evento_id` de cada transición y, **después de que MongoDB confirma**, lo envía al Historial mediante `POST /eventos` en un hilo aparte (3 reintentos con espera creciente y el mismo `evento_id`). La respuesta HTTP al cliente nunca espera al Historial.
+El Registro genera el `evento_id` de cada transición y, **después de que MongoDB confirma**, guarda el evento en la colección `outbox_eventos` (`w:"majority"`). Un hilo de fondo lo envía al Historial mediante `POST /eventos`, en orden, y solo lo borra del outbox cuando el Historial responde `202` o `200` (duplicado). Si el Historial no responde, reintenta sin límite con espera creciente (0.5 s hasta 30 s) y los eventos pendientes sobreviven al reinicio del Registro. La respuesta HTTP al cliente nunca espera al Historial.
 
 Se garantiza que:
 
-- una transición confirmada genera su evento correspondiente;
+- una transición confirmada genera su evento correspondiente (entrega al menos una vez);
 - los eventos se identifican mediante `evento_id`;
 - los duplicados se descartan en el Historial;
 - un rechazo se registra como `rechazada` en Parquet;
-- si el Historial no responde tras los reintentos, el evento se pierde (limitación declarada en la sección 22).
+- si el Historial cae, los eventos esperan en el outbox y se entregan al volver (sección 20.5).
+
+Ventana residual: si el proceso del Registro muere entre el commit de la transición y la inserción en el outbox, el evento no se genera. `pruebas/reconciliar_eventos.py` la detecta comparando `ultimo_evento_id` de las tareas con el datalake (limitación declarada en la sección 22).
 
 El Registro no escribe directamente archivos Parquet. El detalle del Historial está en la sección 18.
 
@@ -1029,6 +1046,8 @@ El Registro no escribe directamente archivos Parquet. El detalle del Historial e
 | Una prueba falla después de reiniciar | Comprobar que todos los servicios requeridos estén levantados |
 | `docker-compose.spark.yml` falla por la red | Levantar primero el compose principal: él crea la red `ti4601-proyecto2_plataforma-net` |
 | Historial en `degradado` o 503 | MongoDB no responde; revisar `docker logs proyecto2-historial` |
+| `/analitica/...` responde 503 o tarda mucho la primera vez | La primera consulta arranca la sesión de Spark (varios segundos); si falla, revisar `docker logs proyecto2-analitica` y que `spark-master` esté arriba |
+| Hay eventos pendientes en `outbox_eventos` | El Historial no responde; al volver se entregan solos. Ver `docker logs proyecto2-registro` |
 | Spark no ve eventos recién enviados | Esperar el micro-lote (hasta 5 s) o revisar `pendientes_en_buffer` en `/salud` del Historial |
 | Tras regenerar el datalake el Historial deduplica mal | Reiniciar `historial` (carga los `evento_id` del lago al arrancar) |
 
@@ -1072,7 +1091,7 @@ docker compose up -d mongo-1 mongo-2 mongo-3 valkey registro sesion gateway
 | Recuperación coordinada de tareas vencidas | Completada |
 | Entrega durable de eventos a Parquet | Completado (sección 18) |
 
-La implementación del subsistema Registro/MongoDB está integrada con Gateway, Sesión/Valkey e Historial. El pendiente restante es la ruta `/analitica` del Gateway.
+La implementación del subsistema Registro/MongoDB está integrada con Gateway, Sesión/Valkey e Historial.
 
 ### 14. Gateway, sesiones y simulador HTTP
 
@@ -1147,8 +1166,9 @@ El Gateway implementa actualmente:
 | POST | `/tareas/{id}/revision` |
 | POST | `/sesiones/recuperar` |
 | GET | `/proyectos/{id}/exportar` |
+| GET | `/analitica/{q1..q5}` |
 
-La integración de `/analitica/{q1..q5}` permanece pendiente del servicio Analítica/Spark.
+`GET /analitica/{q1..q5}` entrega las consultas del servicio Analítica/Spark (sección 19.5).
 
 ##### 14.2.1. Asignación de tareas
 
@@ -1495,15 +1515,15 @@ La tolerancia a fallas de MongoDB se evaluó por separado en la prueba P8 del su
 | P3 | Completada |
 | P6 | Completada |
 | P8 — componente Valkey/Sesión | Completada |
-| `/analitica/{q1..q5}` | Pendiente de conectar en el Gateway (consultas disponibles con `spark-submit`, sección 19) |
+| `/analitica/{q1..q5}` | Completada (sección 19.5) |
 | Entrega de eventos a Historial/Parquet | Completada (sección 18) |
 | Validación final end-to-end con todos los subsistemas | Pendiente del equipo completo |
 
-En el estado actual, el flujo operacional Gateway–Registro–Sesión–Valkey–MongoDB se encuentra implementado y probado, sus transiciones se registran en el datalake Parquet y se consultan con Spark. Los pendientes restantes son la ruta `/analitica` del Gateway y la validación final del sistema completo.
+En el estado actual, el flujo operacional Gateway–Registro–Sesión–Valkey–MongoDB se encuentra implementado y probado, sus transiciones se registran en el datalake Parquet y se consultan con Spark. El pendiente restante es la validación final del sistema completo.
 
 ### 18. Historial y datalake Parquet
 
-Servicio FastAPI (`servicios/historial/`), un solo proceso, puerto interno `8003` (no se publica al host). Se levanta con `docker-compose.spark.yml`, que se une a la red `plataforma-net` del compose principal.
+Servicio FastAPI (`servicios/historial/`), un solo proceso, puerto interno `8003` (no se publica al host). Se levanta con `docker-compose.spark.yml`, que se une a la red `plataforma-net` del compose principal. La única interfaz de administración publicada es la UI del master de Spark, limitada a `127.0.0.1:8080`.
 
 | Método | Endpoint | Función |
 |---|---|---|
@@ -1519,21 +1539,22 @@ Servicio FastAPI (`servicios/historial/`), un solo proceso, puerto interno `8003
 - **Enriquecimiento:** completa `cliente_id`, `sla_seg` y `equipo_id` leyendo MongoDB (solo lectura, caché de 300 s).
 - **Micro-lotes:** se publican cada 5 s o al llegar a 500 eventos.
 - **Publicación atómica:** cada micro-lote se escribe en un archivo oculto `.tmp-*.parquet` y se publica con `os.replace` en `mes=AAAA-MM/evt-<fecha>-<id>.parquet`. Spark ignora los archivos que empiezan con `.`, por lo que no lee un archivo a medias.
-- **Durabilidad:** cada evento aceptado se guarda en un WAL con `fsync` antes de responder `202`; tras una caída se recupera al arrancar.
+- **Durabilidad:** cada evento aceptado se guarda en un WAL con `fsync` antes de responder `202`; tras una caída se recupera al arrancar. Del lado del Registro, el outbox en MongoDB evita perder eventos cuando el Historial no responde (sección 11.3).
+- **Compactación:** `servicios/historial/compactar.py` reemplaza los archivos `evt-*` de una partición por uno solo `compact-*`, elimina filas repetidas por `evento_id` y lo publica de forma atómica antes de borrar los originales. No toca los `part-*` del generador. Uso: `docker exec proyecto2-historial python /app/compactar.py [--mes AAAA-MM] [--dry-run]`.
 - **Estado de la fila:** el de MongoDB, salvo el rechazo: en MongoDB la tarea vuelve a `disponible` y en Parquet la fila es `rechazada`.
 
 **Arranque** (el compose principal debe estar arriba):
 
 ```bash
 docker compose up -d --build registro
-docker compose -f docker-compose.spark.yml up -d spark-master spark-worker-1 historial
+docker compose -f docker-compose.spark.yml up -d spark-master spark-worker-1 historial analitica
 docker compose -f docker-compose.spark.yml --profile dos-workers up -d spark-worker-2   # opcional
 ```
 
 **Detención** (nunca `down -v`):
 
 ```bash
-docker compose -f docker-compose.spark.yml stop historial spark-worker-2 spark-worker-1 spark-master
+docker compose -f docker-compose.spark.yml stop analitica historial spark-worker-2 spark-worker-1 spark-master
 ```
 
 ### 19. Analítica con Apache Spark
@@ -1602,6 +1623,19 @@ Evidencias: `evidence/p5-consultas-1worker.txt` (`executors=1`), `evidence/p5-co
 - Los dos workers comparten la máquina y el conjunto es pequeño, por lo que no se puede inferir cómo escalaría un clúster real.
 - El conjunto ampliado (hasta 10 M de filas) no se midió por capacidad de la máquina y tiempo.
 
+#### 19.5. API REST de analítica
+
+Servicio FastAPI (`servicios/analitica/`, puerto interno `8004`, sin puertos publicados) con dos rutas internas: `GET /salud` y `GET /consultas/{q1..q5}`. El Gateway las expone como:
+
+```text
+GET /analitica/{q1..q5}?conjunto=principal|grande&ref=AAAA-MM-DD HH:MM:SS&limite=1000
+```
+
+- Ejecuta las mismas funciones `q1..q5` de `spark/jobs/consultas.py`, con el driver de Spark dentro del contenedor y los executors en los workers. Lee solo `datalake/eventos` (volumen `:ro`); no tiene acceso a MongoDB ni al Historial.
+- La respuesta incluye `resultado`, `filas`, `tiempo_s` (consulta), `arranque_spark_s` (costo de crear la sesión; solo la primera consulta lo paga) y `ref`. La sesión se libera tras 120 s sin uso para no ocupar los cores del cluster.
+- Errores: `404` consulta inexistente o conjunto no disponible (el conjunto `grande` no existe en este entorno), `422` parámetros inválidos, `503` si Spark no puede ejecutar la consulta.
+- Mientras la sesión esté activa ocupa 2 cores del cluster: **detener `analitica` antes de medir 1 contra 2 workers**.
+
 ### 20. Pruebas P4 (Historial) y P5 (Analítica)
 
 > `pruebas/p4_indices.py` y `pruebas/p5_recuperacion_interna.py` (sección 9) son pruebas internas del Registro; los P4 y P5 oficiales del enunciado son las de esta sección.
@@ -1638,7 +1672,16 @@ Resultado (`evidence/e2e-rechazo.txt`, `evidence/p4-visible-en-spark.txt`):
 - MongoDB tras el rechazo: `estado=disponible`, asignación vacía, versión 0 → 4.
 - Parquet: `abierta → anotada → en_revision → rechazada`, sin ninguna fila `disponible`, con motivo, revisor y enriquecimiento correctos.
 - Entre el HTTP 200 del rechazo y el evento visible: **2.9 s** en Parquet y **3.7 s** en Spark (Spark ya calentado; la última consulta duró 0.9 s). Es **una sola muestra**; el límite lo fija el micro-lote (≤ 5 s) más la consulta.
-- La prueba se hizo directamente contra el Registro (`registro:8001`), no a través del Gateway.
+- Esta prueba se hizo directamente contra el Registro (`registro:8001`).
+
+La misma prueba **entrando por el Gateway** (`http://gateway:8000`, con el lock en Valkey):
+
+```bash
+docker exec -i proyecto2-historial python - < pruebas/e2e_gateway_rechazo.py \
+  2>&1 | tee evidence/e2e-gateway-rechazo.txt
+```
+
+Resultado (`evidence/e2e-gateway-rechazo.txt`): segundo envío **HTTP 409** (lo decide la validación del lock en Valkey; sin Gateway lo decide la actualización condicional de MongoDB), MongoDB `disponible` con versión 12 → 16, y las 4 filas en Parquet visibles **5.6 s** después del HTTP 200 del rechazo (una sola muestra). La prueba solo cuenta las filas con versión posterior a la inicial, porque el Gateway puede reasignar una tarea que ya tenía historial.
 
 #### 20.3. Caída del Historial con eventos en buffer
 
@@ -1647,6 +1690,34 @@ bash pruebas/p4_reinicio_buffer.sh 2>&1 | tee evidence/p4-reinicio-historial.txt
 ```
 
 Envía 20 eventos, mata el contenedor (`docker kill`) antes de que se publiquen y lo reinicia. Resultado: los 20 se recuperan del WAL, aparecen **exactamente una vez** en Parquet, el reenvío responde `duplicado` y no quedan archivos temporales.
+
+#### 20.5. Entrega durable de eventos (Historial caído)
+
+```bash
+bash pruebas/p4_entrega_durable.sh 2>&1 | tee evidence/p4-entrega-durable.txt
+```
+
+Detiene el Historial, genera 4 transiciones reales por el Registro (el Registro confirma con HTTP 200), comprueba que los 4 eventos quedan en `outbox_eventos`, reinicia el propio Registro, levanta el Historial y verifica que los 4 eventos llegan a Parquet exactamente una vez y en orden, con el outbox vacío.
+
+#### 20.6. Compactación
+
+```bash
+docker compose -f docker-compose.spark.yml run -d --no-deps --name hist-p4 \
+  -e LAGO_DIR=/datalake/eventos_p4 -e FLUSH_SEGUNDOS=60 historial
+docker exec -e LAGO_DIR=/datalake/eventos_p4 -i hist-p4 python - \
+  < pruebas/p4_compactacion.py 2>&1 | tee evidence/p4-compactacion.txt
+docker rm -f hist-p4 && sudo rm -rf datalake/eventos_p4 datalake/eventos_p4_wal
+```
+
+30 micro-lotes (30 archivos) más una copia duplicada se compactan en 1 archivo con 150 filas distintas, sin temporales, y el Historial sigue deduplicando.
+
+#### 20.7. API de analítica por el Gateway
+
+```bash
+python3 pruebas/p5_analitica_api.py 2>&1 | tee evidence/p5-analitica-api.txt
+```
+
+Llama `GET /analitica/q1..q5` por `localhost:8000`, informa el costo de arranque de Spark (primera consulta) y los tiempos posteriores, compara la cantidad de filas con los CSV de `spark-submit` y comprueba los códigos 404/422. Q1 depende de `ref` (ventana de 90 días respecto al evento más reciente del lago): la prueba fija `REF_Q1` (por defecto `2026-11-23 23:58:45`, el corte con el que se generaron los CSV) para que la comparación sea exacta; si se regeneran los CSV, ejecutar con `REF_Q1="<ref impreso por consultas.py>"`.
 
 #### 20.4. P5: consultas
 
@@ -1676,9 +1747,10 @@ Resultados validados contra pandas, planes de Q1 y Q3 y mediciones en las seccio
 - **Una sola máquina:** los tres nodos de MongoDB y los workers de Spark comparten CPU, disco y red virtual; no hay latencia de red real ni fallas independientes.
 - **`w:1` vs `w:"majority"`:** la diferencia medida (p50 0.31 ms contra 0.91 ms) es costo local y no se puede extrapolar a un clúster distribuido.
 - **Spark:** 1 contra 2 workers no es una prueba de escalabilidad (mismo hardware, ~800 000 filas); el conjunto ampliado de 10 M de filas no se midió.
-- **Entrega al menos una vez:** si el Historial no responde tras los 3 reintentos del Registro, el evento se pierde; no hay reconciliación con `ultimo_evento_id`.
+- **Entrega al menos una vez:** el outbox evita perder eventos si el Historial cae o el Registro se reinicia. Persiste una ventana residual: si el Registro muere entre el commit en MongoDB y la inserción en el outbox, el evento no se genera. `reconciliar_eventos.py` solo detecta el último evento de cada tarea, no los intermedios, y no lo reenvía.
 - **Un solo proceso Historial:** el conjunto de `evento_id` vive en memoria (801 890 ids) y no escala horizontalmente.
-- **Sin compactación:** los micro-lotes generan archivos pequeños; no se implementó compactación ni se midió su efecto.
+- **Compactación manual:** `compactar.py` se ejecuta bajo demanda, no de forma programada. Entre publicar el archivo compactado y borrar los originales (milisegundos) un lector podría ver eventos duplicados, por lo que conviene ejecutarlo sin consultas en curso.
 - **Deduplicación en el Historial:** se aplica al escribir; las consultas Spark leen el lago tal cual.
 - **Datos:** 175 000 tareas en lugar de 100 000 de referencia para llegar a ~800 000 eventos en 12 meses, con particiones extremas parciales. Los eventos reales de la prueba e2e se agregaron al mismo lago.
-- **`/analitica/{q1..q5}`:** no conectado al Gateway; las consultas se ejecutan con `spark-submit`.
+- **Analítica:** el servicio ejecuta una consulta Spark a la vez y la primera tras 120 s de inactividad paga el arranque de Spark; el conjunto ampliado (`conjunto=grande`) responde 404 porque no se generó.
+- **Tiempos de la prueba de rechazo:** 2.9 s (por el Registro) y 5.6 s (por el Gateway) son una sola muestra cada uno y dependen del micro-lote de hasta 5 s.
